@@ -1,16 +1,24 @@
 import os
 import json
 import re
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 from contextlib import asynccontextmanager
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import SQLModel, Session, create_engine, select
 
-from models import ContextItem, Exam, Question
+from models import ContextItem, Exam, Question, InstituteConfig
 from vector_store import VectorStore
+from pgvector_store import PgVectorStore
 from llm_client import call_openrouter
 from image_utils import render_plot_from_spec, execute_matplotlib_code, generate_plot_code_from_ai
 from latex_utils import create_tex
@@ -19,10 +27,33 @@ from docx_utils import create_docx
 from pptx_utils import create_pptx
 from chunker import UniversalChunker, detect_subject, SUBJECT_KEYWORDS
 
-DATABASE_URL = "sqlite:///./examgen.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+# ── Relational SQL Database (Supabase PostgreSQL / SQLite fallback) ─────────
+SQL_DATABASE_URL = (
+    os.getenv("SQL_DATABASE_URL")
+    or os.getenv("DATABASE_URL")
+    or os.getenv("SUPABASE_DB_URL")
+    or "sqlite:///./examgen.db"
+)
+
+# Normalize postgres:// to postgresql:// if copied directly from Supabase/Heroku URI
+if SQL_DATABASE_URL.startswith("postgres://"):
+    SQL_DATABASE_URL = SQL_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+is_sqlite = SQL_DATABASE_URL.startswith("sqlite")
+
+if is_sqlite:
+    engine = create_engine(SQL_DATABASE_URL, connect_args={"check_same_thread": False})
+else:
+    # PostgreSQL / Supabase connection pooling
+    engine = create_engine(
+        SQL_DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20,
+    )
 
 vector_store: Optional[VectorStore] = None
+pgvector_store: Optional[PgVectorStore] = None
 EXPORTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "exports")
 IMAGES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "images")
 os.makedirs(EXPORTS_DIR, exist_ok=True)
@@ -32,48 +63,88 @@ os.makedirs(IMAGES_DIR, exist_ok=True)
 def init_db():
     SQLModel.metadata.create_all(engine)
     # Automatic migration for existing SQLite database tables if columns are missing
-    import sqlite3
-    db_file = DATABASE_URL.replace("sqlite:///", "")
-    if os.path.exists(db_file):
-        conn = sqlite3.connect(db_file)
-        cursor = conn.cursor()
-        try:
-            cursor.execute("PRAGMA table_info(contextitem)")
-            existing_cols = {col[1] for col in cursor.fetchall()}
-            if "subject" not in existing_cols:
-                cursor.execute("ALTER TABLE contextitem ADD COLUMN subject VARCHAR DEFAULT 'General'")
-            if "source_file" not in existing_cols:
-                cursor.execute("ALTER TABLE contextitem ADD COLUMN source_file VARCHAR DEFAULT NULL")
-            conn.commit()
-        except Exception as e:
-            print(f"[DB Migration Warning] {e}")
-        finally:
-            conn.close()
+    if is_sqlite:
+        import sqlite3
+        db_file = SQL_DATABASE_URL.replace("sqlite:///", "")
+        if os.path.exists(db_file):
+            conn = sqlite3.connect(db_file)
+            cursor = conn.cursor()
+            try:
+                # 1. Migrate contextitem table
+                cursor.execute("PRAGMA table_info(contextitem)")
+                existing_cols = {col[1] for col in cursor.fetchall()}
+                if "subject" not in existing_cols:
+                    cursor.execute("ALTER TABLE contextitem ADD COLUMN subject VARCHAR DEFAULT 'General'")
+                if "source_file" not in existing_cols:
+                    cursor.execute("ALTER TABLE contextitem ADD COLUMN source_file VARCHAR DEFAULT NULL")
+                if "institute_id" not in existing_cols:
+                    cursor.execute("ALTER TABLE contextitem ADD COLUMN institute_id VARCHAR DEFAULT 'default-institute'")
+
+                # 2. Migrate exam table
+                cursor.execute("PRAGMA table_info(exam)")
+                existing_exam_cols = {col[1] for col in cursor.fetchall()}
+                if "institute_id" not in existing_exam_cols:
+                    cursor.execute("ALTER TABLE exam ADD COLUMN institute_id VARCHAR DEFAULT 'default-institute'")
+                if "subject" not in existing_exam_cols:
+                    cursor.execute("ALTER TABLE exam ADD COLUMN subject VARCHAR DEFAULT 'General'")
+
+                conn.commit()
+            except Exception as e:
+                print(f"[DB Migration Warning] {e}")
+            finally:
+                conn.close()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global vector_store
+    global vector_store, pgvector_store
     init_db()
     vector_store = VectorStore()
+    # Do not download/load the embedding model during API startup. Both stores
+    # initialize it lazily on the first upload or semantic query.
+    pgvector_store = PgVectorStore()
 
-    # Preload existing context items from SQLite into VectorStore
-    with Session(engine) as session:
-        items = session.exec(select(ContextItem)).all()
-        if items:
-            vector_store.add([
-                {
-                    "id": item.id,
-                    "content": item.content,
-                    "subject": item.subject or detect_subject(item.content),
-                    "source_file": item.source_file or ""
-                }
-                for item in items
-            ])
+    # Preload existing context items into local VectorStore only if pgvector is inactive and using SQLite
+    if not pgvector_store.is_pgvector_active and is_sqlite:
+        with Session(engine) as session:
+            items = session.exec(select(ContextItem)).all()
+            if items:
+                preload_legacy = []
+                for item in items:
+                    subj = item.subject or detect_subject(item.content)
+                    src = item.source_file or "context.json"
+                    preload_legacy.append({
+                        "id": item.id,
+                        "content": item.content,
+                        "subject": subj,
+                        "source_file": src
+                    })
+                vector_store.add(preload_legacy)
     yield
 
 
+# Trigger reload with updated Supabase environment
 app = FastAPI(title="ExamGen Studio", lifespan=lifespan)
+
+DEFAULT_INSTITUTE_CONFIG: Dict[str, Any] = {
+    "profile": "standard",
+    "difficulty": {"easy": 30, "medium": 50, "hard": 20},
+    "bloom_levels": ["remember", "understand", "apply", "analyze"],
+    "question_types": {"subjective": 60, "numerical": 25, "mcq": 15},
+    "co_mapping": True,
+    "po_mapping": True,
+    "cross_disciplinary": True,
+    "formative_mode": False,
+    "no_duplicate_topics": True,
+    "balanced_marks": True,
+    "require_diagram": False,
+    "min_hard_questions": 1,
+    "time_minutes": 180,
+    "max_diagrams": 3,
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4000,
+}
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -100,17 +171,110 @@ async def root():
     return {"status": "ok", "service": "ExamGen Studio Backend"}
 
 
-@app.get("/api/exams")
-async def get_exams():
-    """Returns list of recently generated exams."""
+@app.get("/api/database/status")
+async def get_database_status():
+    """
+    Returns the operational status of the SQL Relational Database (Supabase / SQLite)
+    and the Vector Database (pgvector / local FAISS), confirming their clean separation.
+    """
+    sql_backend = "PostgreSQL (Supabase)" if not is_sqlite else "SQLite (Local Dev)"
+    sql_connected = True
+    exam_count = 0
+    question_count = 0
+    try:
+        with Session(engine) as session:
+            exam_count = len(session.exec(select(Exam)).all())
+            question_count = len(session.exec(select(Question)).all())
+    except Exception as e:
+        sql_connected = False
+        sql_backend = f"Error: {str(e)}"
+
+    vector_info = pgvector_store.get_vector_status() if pgvector_store else {
+        "is_pgvector_active": False,
+        "backend": "none",
+        "total_chunks": 0
+    }
+
+    return {
+        "sql_database": {
+            "type": "relational_sql",
+            "backend": sql_backend,
+            "connected": sql_connected,
+            "total_exams": exam_count,
+            "total_questions": question_count,
+            "managed_tables": ["exam", "question", "contextitem"]
+        },
+        "vector_database": {
+            "type": "vector_semantic",
+            "backend": vector_info.get("backend", "local-faiss"),
+            "is_pgvector_active": vector_info.get("is_pgvector_active", False),
+            "total_chunks": vector_info.get("total_chunks", 0),
+            "managed_table": "institute_document_chunks"
+        }
+    }
+
+
+@app.get("/api/institute/config")
+async def get_institute_config(institute_id: str = "default-institute"):
     with Session(engine) as session:
-        exams = session.exec(select(Exam).order_by(Exam.created_at.desc())).all()
+        record = session.exec(
+            select(InstituteConfig).where(InstituteConfig.institute_id == institute_id)
+        ).first()
+        config = dict(DEFAULT_INSTITUTE_CONFIG)
+        if record:
+            try:
+                stored = json.loads(record.config_json)
+                config.update(stored if isinstance(stored, dict) else {})
+            except json.JSONDecodeError:
+                pass
+        return {"institute_id": institute_id, "config": config}
+
+
+@app.put("/api/institute/config")
+async def save_institute_config(payload: Dict[str, Any], institute_id: str = "default-institute"):
+    incoming = payload.get("config", payload)
+    if not isinstance(incoming, dict):
+        raise HTTPException(status_code=400, detail="config must be a JSON object")
+    config = dict(DEFAULT_INSTITUTE_CONFIG)
+    config.update(incoming)
+    with Session(engine) as session:
+        record = session.exec(
+            select(InstituteConfig).where(InstituteConfig.institute_id == institute_id)
+        ).first()
+        if record:
+            record.config_json = json.dumps(config)
+            record.updated_at = datetime.utcnow()
+        else:
+            record = InstituteConfig(
+                institute_id=institute_id,
+                config_json=json.dumps(config),
+            )
+        session.add(record)
+        session.commit()
+    return {"status": "success", "institute_id": institute_id, "config": config}
+
+
+@app.get("/api/exams")
+async def get_exams(
+    institute_id: Optional[str] = None,
+    subject: Optional[str] = None
+):
+    """Returns list of recently generated exams from the relational SQL database."""
+    with Session(engine) as session:
+        query = select(Exam).order_by(Exam.created_at.desc())
+        if institute_id:
+            query = query.where(Exam.institute_id == institute_id)
+        if subject and subject != "All":
+            query = query.where(Exam.subject == subject)
+        exams = session.exec(query).all()
         result = []
         for e in exams:
             q_count = len(session.exec(select(Question).where(Question.exam_id == e.id)).all())
             result.append({
                 "id": e.id,
                 "title": e.title,
+                "institute_id": getattr(e, "institute_id", "default-institute"),
+                "subject": getattr(e, "subject", "General"),
                 "max_marks": e.max_marks,
                 "n_questions": e.n_questions or q_count,
                 "per_unit_weights_json": e.per_unit_weights_json,
@@ -177,21 +341,23 @@ async def get_sample_context():
 
 
 @app.get("/api/context/stats")
-async def get_context_stats():
-    """Returns the count of indexed items, subject breakdown, and recent items."""
+async def get_context_stats(institute_id: str = "default-institute"):
+    """Returns the count of indexed items, subject breakdown, and recent items for an institute."""
+    if pgvector_store:
+        stats = pgvector_store.get_institute_stats(institute_id)
+        if stats.get("total_items", 0) > 0:
+            return stats
+
     with Session(engine) as session:
-        items = session.exec(select(ContextItem)).all()
-        # Subject breakdown from DB
+        items = session.exec(
+            select(ContextItem).where(ContextItem.institute_id == institute_id)
+        ).all()
+        # Filter for institute if set
+        filtered = [it for it in items if getattr(it, "institute_id", "default-institute") in (institute_id, "default-institute")]
         subject_counts: Dict[str, int] = {}
-        for item in items:
+        for item in filtered:
             subj = item.subject or "General"
             subject_counts[subj] = subject_counts.get(subj, 0) + 1
-        # Also merge live vector-store subject counts
-        if vector_store:
-            vs_counts = vector_store.get_subject_stats()
-            for subj, cnt in vs_counts.items():
-                if subj not in subject_counts:
-                    subject_counts[subj] = cnt
         recent = [
             {
                 "id": item.id,
@@ -200,14 +366,180 @@ async def get_context_stats():
                 "source_file": item.source_file or "",
                 "content": item.content[:150] + ("..." if len(item.content) > 150 else "")
             }
-            for item in items[-8:]
+            for item in filtered[-8:]
         ]
         return {
             "status": "success",
-            "total_items": len(items),
+            "backend": "local-hybrid",
+            "total_items": len(filtered),
             "subject_breakdown": subject_counts,
             "recent_items": recent
         }
+
+
+@app.get("/api/institute/subjects")
+async def get_institute_subjects(institute_id: str = "default-institute"):
+    """Returns all subjects indexed for an institute with chunk counts and document counts."""
+    if pgvector_store:
+        subjects = pgvector_store.get_institute_subjects(institute_id)
+        if subjects:
+            return subjects
+
+    # Fallback to database query
+    with Session(engine) as session:
+        items = session.exec(
+            select(ContextItem).where(ContextItem.institute_id == institute_id)
+        ).all()
+        subj_map = {}
+        for it in items:
+            s = it.subject or "General"
+            f = it.source_file or "document"
+            if s not in subj_map:
+                subj_map[s] = {"chunks": 0, "files": set()}
+            subj_map[s]["chunks"] += 1
+            subj_map[s]["files"].add(f)
+
+        return [
+            {
+                "subject": s,
+                "chunks_count": data["chunks"],
+                "documents_count": len(data["files"])
+            }
+            for s, data in sorted(subj_map.items(), key=lambda x: x[1]["chunks"], reverse=True)
+        ]
+
+
+@app.get("/api/vector/status")
+async def get_vector_status():
+    """Returns vector database status, health, active backend and embedding model."""
+    if pgvector_store:
+        return pgvector_store.get_vector_status()
+    return {
+        "active": False,
+        "backend": "none",
+        "message": "Vector store not initialized"
+    }
+
+
+@app.get("/api/institute/documents")
+async def get_institute_documents(institute_id: str = "default-institute"):
+    """Lists unique uploaded documents for an institute with chunk stats and previews."""
+    if pgvector_store:
+        docs = pgvector_store.get_institute_documents(institute_id)
+        if docs:
+            return docs
+
+    # Fallback to SQLite query
+    with Session(engine) as session:
+        items = session.exec(
+            select(ContextItem).where(ContextItem.institute_id == institute_id)
+        ).all()
+        doc_map: Dict[str, Dict[str, Any]] = {}
+        for it in items:
+            sf = it.source_file or "document.txt"
+            if sf not in doc_map:
+                doc_map[sf] = {
+                    "source_file": sf,
+                    "subject": it.subject or "General",
+                    "file_type": sf.split(".")[-1] if "." in sf else "text",
+                    "chunk_count": 0,
+                    "uploaded_at": str(it.created_at) if hasattr(it, "created_at") else "Recently",
+                    "preview": it.content[:200]
+                }
+            doc_map[sf]["chunk_count"] += 1
+        return list(doc_map.values())
+
+
+@app.get("/api/institute/documents/chunks")
+async def get_document_chunks(
+    source_file: str,
+    institute_id: str = "default-institute"
+):
+    """Fetches all parsed semantic chunks for a given file and institute for UI inspection."""
+    if pgvector_store:
+        chunks = pgvector_store.get_document_chunks(institute_id, source_file)
+        if chunks:
+            return chunks
+
+    with Session(engine) as session:
+        items = session.exec(
+            select(ContextItem).where(
+                ContextItem.institute_id == institute_id,
+                ContextItem.source_file == source_file
+            )
+        ).all()
+        return [
+            {
+                "id": it.id,
+                "chunk_index": idx + 1,
+                "content": it.content,
+                "subject": it.subject or "General",
+                "metadata": json.loads(it.metadata_json) if it.metadata_json else {}
+            }
+            for idx, it in enumerate(items)
+        ]
+
+
+@app.get("/api/institute/subjects")
+async def get_institute_subjects(institute_id: str = "default-institute"):
+    """Returns all subjects indexed for an institute with chunk and document counts."""
+    if pgvector_store:
+        subjects = pgvector_store.get_institute_subjects(institute_id)
+        if subjects:
+            return subjects
+
+    with Session(engine) as session:
+        items = session.exec(
+            select(ContextItem).where(ContextItem.institute_id == institute_id)
+        ).all()
+        subj_map: Dict[str, Dict[str, Any]] = {}
+        for it in items:
+            s = it.subject or "General"
+            f = it.source_file or ""
+            if s not in subj_map:
+                subj_map[s] = {"chunks": 0, "files": set()}
+            subj_map[s]["chunks"] += 1
+            if f:
+                subj_map[s]["files"].add(f)
+        return [
+            {
+                "subject": s,
+                "chunks_count": data["chunks"],
+                "documents_count": len(data["files"])
+            }
+            for s, data in sorted(subj_map.items(), key=lambda x: x[1]["chunks"], reverse=True)
+        ]
+
+
+@app.delete("/api/institute/documents")
+async def delete_institute_document(
+    source_file: str,
+    institute_id: str = "default-institute"
+):
+    """Deletes all chunks belonging to a document from both pgvector and SQLite."""
+    deleted_vector = 0
+    if pgvector_store:
+        deleted_vector = pgvector_store.delete_document(institute_id, source_file)
+
+    deleted_db = 0
+    with Session(engine) as session:
+        items = session.exec(
+            select(ContextItem).where(
+                ContextItem.institute_id == institute_id,
+                ContextItem.source_file == source_file
+            )
+        ).all()
+        for it in items:
+            session.delete(it)
+            deleted_db += 1
+        session.commit()
+
+    return {
+        "status": "success",
+        "message": f"Successfully deleted '{source_file}' and all its semantic chunks.",
+        "deleted_vector_chunks": deleted_vector,
+        "deleted_db_items": deleted_db
+    }
 
 
 # ── Subject Classifier ──────────────────────────────────────────────────────
@@ -312,82 +644,122 @@ def _detect_subject(combined_text: str) -> str:
 
 
 @app.post("/api/context/upload")
-async def upload_context(files: List[UploadFile] = File(...)):
+async def upload_context(
+    files: List[UploadFile] = File(...),
+    institute_id: str = Form("default-institute"),
+    subject: Optional[str] = Form(None)
+):
     """
-    Accepts one OR MORE JSON files (syllabi, history timelines, problem sets, formulas,
-    question banks, or nested subject structures). Each file is recursively parsed and
-    chunked using UniversalChunker, subject-classified, and stored in SQLite + FAISS.
+    Accepts one OR MORE files in ANY format (PDF, Word DOCX, PowerPoint PPTX,
+    Plain Text, Markdown, or JSON syllabi / question banks).
+    Extracts text, applies universal semantic chunking with subject classification,
+    and indexes into the institute-isolated pgvector database partition.
     """
     total_saved: List[Dict] = []
     per_file_results: List[Dict] = []
-    all_for_indexing: List[Dict] = []
+    all_for_legacy: List[Dict] = []
 
     for upload_file in files:
-        filename = upload_file.filename or "context.json"
+        filename = upload_file.filename or "document.txt"
+        ext = os.path.splitext(filename)[1].lstrip(".") or "text"
         try:
             content_bytes = await upload_file.read()
-            raw_data = json.loads(content_bytes.decode("utf-8"))
+            extracted_items = UniversalChunker.parse_and_chunk_file(
+                file_bytes=content_bytes,
+                filename=filename,
+                fallback_subject=subject
+            )
         except Exception as e:
-            per_file_results.append({"file": filename, "error": str(e), "count": 0})
+            per_file_results.append({
+                "file": filename,
+                "error": f"Extraction error: {str(e)}",
+                "count": 0
+            })
             continue
 
-        # Use UniversalChunker to parse any academic JSON schema
-        extracted_items = UniversalChunker.chunk_json_data(raw_data, filename=filename)
         file_saved: List[Dict] = []
         subject_counts: Dict[str, int] = {}
+
+        # Index vectors before committing relational rows. This prevents the
+        # document library from advertising chunks that RAG cannot retrieve.
+        vector_indexed = False
+        if pgvector_store and extracted_items:
+            try:
+                pgvector_store.add_document_chunks(
+                    institute_id=institute_id,
+                    subject=subject or "General",
+                    source_file=filename,
+                    file_type=ext,
+                    chunks=extracted_items
+                )
+                vector_indexed = True
+            except Exception as e:
+                per_file_results.append({
+                    "file": filename,
+                    "error": f"Vector indexing error: {str(e)}",
+                    "count": 0
+                })
+                continue
 
         with Session(engine) as session:
             for item in extracted_items:
                 text = item["content"]
-                item_type = item.get("item_type", "general")
-                subject = item.get("subject", "General")
+                item_type = item.get("item_type", "document_chunk")
+                chunk_subj = item.get("subject") or subject or "General"
                 meta = item.get("metadata", {})
-                subject_counts[subject] = subject_counts.get(subject, 0) + 1
+                subject_counts[chunk_subj] = subject_counts.get(chunk_subj, 0) + 1
 
-                db_item = ContextItem(
+                session.add(ContextItem(
+                    institute_id=institute_id,
                     content=text,
                     item_type=item_type,
-                    subject=subject,
+                    subject=chunk_subj,
                     source_file=filename,
                     metadata_json=json.dumps(meta) if meta else None
-                )
-                session.add(db_item)
-                session.commit()
-                session.refresh(db_item)
+                ))
 
                 record = {
-                    "id": db_item.id,
-                    "content": db_item.content,
-                    "item_type": db_item.item_type,
-                    "subject": subject
+                    "id": None,
+                    "content": text,
+                    "item_type": item_type,
+                    "subject": chunk_subj,
+                    "source_file": filename,
+                    "file_type": ext
                 }
                 file_saved.append(record)
                 total_saved.append(record)
-                all_for_indexing.append({
-                    "id": db_item.id,
+                all_for_legacy.append({
+                    "id": None,
                     "content": text,
-                    "subject": subject,
+                    "subject": chunk_subj,
                     "source_file": filename
                 })
+            session.commit()
 
         per_file_results.append({
             "file": filename,
+            "file_type": ext,
             "count": len(file_saved),
             "subjects": subject_counts
         })
 
-    if vector_store and all_for_indexing:
-        vector_store.add(all_for_indexing)
+    # Legacy vector store fallback
+    if vector_store and all_for_legacy:
+        vector_store.add(all_for_legacy)
 
     # Build aggregate subject summary across all files
     aggregate_subjects: Dict[str, int] = {}
     for r in per_file_results:
-        for subj, cnt in r.get("subjects", {}).items():
-            aggregate_subjects[subj] = aggregate_subjects.get(subj, 0) + cnt
+        for subj_name, cnt in r.get("subjects", {}).items():
+            aggregate_subjects[subj_name] = aggregate_subjects.get(subj_name, 0) + cnt
+
+    vector_backend = "pgvector (PostgreSQL)" if (pgvector_store and pgvector_store.is_pgvector_active) else "local-vector-store"
 
     return {
         "status": "success",
-        "message": f"Parsed and indexed {len(total_saved)} semantic chunks from {len(files)} file(s).",
+        "message": f"Successfully parsed and indexed {len(total_saved)} semantic chunks from {len(files)} file(s).",
+        "institute_id": institute_id,
+        "vector_backend": vector_backend,
         "count": len(total_saved),
         "subject_breakdown": aggregate_subjects,
         "files": per_file_results
@@ -635,25 +1007,53 @@ async def generate_exam(
     per_unit_weights: Optional[str] = Form(None),
     include_diagrams: Optional[bool] = Form(True),
     model: Optional[str] = Form(None),
-    api_key: Optional[str] = Form(None)
+    api_key: Optional[str] = Form(None),
+    institute_id: str = Form("default-institute"),
+    subject: Optional[str] = Form(None),
+    syllabus_set: Optional[str] = Form(None),
+    blueprint_config: Optional[str] = Form(None)
 ):
     """
     High-speed, single-pass exam generator that retrieves relevant curriculum context
-    from FAISS, formats subject-specific prompts (Maths, History, Sciences, etc.),
+    from the institute's pgvector database for the specific subject, formats prompts,
     and generates questions with embedded Matplotlib image specs in ONE efficient LLM call.
     """
-    # Infer subject
-    query_text = f"{title} " + (per_unit_weights or "")
-    detected_subj = detect_subject(query_text, default_subject="General")
+    # Determine subject before constructing the semantic retrieval query.
+    subject_hint = f"{title} {syllabus_set or ''} " + (per_unit_weights or "")
+    detected_subj = subject or detect_subject(subject_hint, default_subject="General")
+    query_text = f"{title} {detected_subj} {syllabus_set or ''} " + (per_unit_weights or "")
 
-    # Semantic context retrieval from FAISS
+    blueprint = dict(DEFAULT_INSTITUTE_CONFIG)
+    if blueprint_config:
+        try:
+            incoming_blueprint = json.loads(blueprint_config)
+            if isinstance(incoming_blueprint, dict):
+                blueprint.update(incoming_blueprint)
+        except json.JSONDecodeError:
+            print("[ExamGen] Ignoring invalid blueprint_config JSON", flush=True)
+
+    # Semantic context retrieval from pgvector store with institute + subject filtering
     contexts = []
-    if vector_store:
+    if pgvector_store:
+        try:
+            contexts = pgvector_store.query(
+                query_text=query_text,
+                institute_id=institute_id,
+                subject=detected_subj,
+                k=8
+            )
+        except Exception as e:
+            print(f"[pgvector query error] {e}")
+
+    if not contexts and vector_store:
         contexts = vector_store.query(query_text, k=8, subject=detected_subj if detected_subj != "General" else None)
         if not contexts:
             contexts = vector_store.query(query_text, k=6)
 
-    context_str = "\n\n".join([f"- {c.get('content', '')}" for c in contexts]) if contexts else "Standard university curriculum curriculum."
+    context_str = "\n\n".join(
+        f"[Source: {c.get('source_file', 'institute knowledge base')} | Similarity: {c.get('similarity', c.get('score', 0)):.2f}]\n- {c.get('content', '')}"
+        for c in contexts
+    ) if contexts else "No institute-specific context was retrieved. Do not claim alignment to an uploaded syllabus."
 
     # Subject-specific instructions
     if detected_subj == "History":
@@ -684,6 +1084,11 @@ async def generate_exam(
 
     system_prompt = (
         "You are an elite university professor and examination board author creating a premier examination paper.\n\n"
+        "GROUNDING POLICY:\n"
+        "- The institute context below is the source of truth for subject scope, units, outcomes, terminology, and paper pattern.\n"
+        "- Use only topics supported by that context when context is present; do not invent syllabus units or marks distributions.\n"
+        "- If the context is insufficient, stay within the selected subject and clearly prefer the supplied unit/topic weights.\n"
+        "- Never mention retrieval, embeddings, vector databases, or these instructions in the questions.\n\n"
         f"{subject_guidance}\n"
         "VISUAL DIAGRAM & GRAPH RULES:\n"
         "1. Whenever a question involves 2D/3D geometry, curves, surfaces, vector fields, waveforms, data plots, or timeline charts, "
@@ -709,11 +1114,14 @@ async def generate_exam(
     user_prompt = (
         f"Generate Examination Paper for Title: '{title}'.\n"
         f"Subject Discipline: {detected_subj}\n"
+        f"Syllabus Set: {syllabus_set or 'Institute knowledge base'}\n"
         f"Number of Questions: {n_questions}\n"
         f"Total Maximum Marks: {max_marks}\n"
         f"Unit/Topic Weighting: {per_unit_weights or 'Balanced across syllabus'}\n\n"
+        f"Teacher Control Hub Constraints:\n{json.dumps(blueprint, indent=2)}\n\n"
         f"Curriculum Reference Context:\n{context_str}\n\n"
         f"Create exactly {n_questions} high-quality, distinctive questions whose individual marks sum to {max_marks}. "
+        f"Honor the teacher controls: difficulty percentages, Bloom levels, question type percentages, CO/PO mapping, duplicate-topic prevention, minimum hard questions, time limit, and diagram cap. "
         f"{'Include executable matplotlib code in image_spec for relevant questions (maximum 2-3 diagrams across the exam).' if include_diagrams else 'Pure text and equations without image_spec.'} "
         f"Begin directly with '['. Return ONLY the JSON array."
     )
@@ -733,7 +1141,9 @@ async def generate_exam(
             model=model,
             api_key=api_key,
             max_tokens=scaled_max_tokens,
-            timeout=scaled_timeout
+            timeout=scaled_timeout,
+            temperature=float(blueprint.get("temperature", 0.7)),
+            top_p=float(blueprint.get("top_p", 0.9))
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM Generation Error: {str(e)}")
@@ -755,6 +1165,8 @@ async def generate_exam(
     with Session(engine) as session:
         exam = Exam(
             title=title,
+            institute_id=institute_id,
+            subject=detected_subj,
             max_marks=max_marks,
             n_questions=len(questions_data),
             per_unit_weights_json=per_unit_weights
@@ -766,6 +1178,8 @@ async def generate_exam(
         exam_dict = {
             "id": exam.id,
             "title": exam.title,
+            "institute_id": getattr(exam, "institute_id", institute_id),
+            "subject": getattr(exam, "subject", detected_subj),
             "max_marks": exam.max_marks,
             "n_questions": exam.n_questions,
             "per_unit_weights_json": exam.per_unit_weights_json,

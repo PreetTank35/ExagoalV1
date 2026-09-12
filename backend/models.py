@@ -5,6 +5,7 @@ from sqlmodel import SQLModel, Field, Relationship
 
 class ContextItem(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    institute_id: Optional[str] = Field(default="default-institute")
     content: str
     item_type: Optional[str] = Field(default="general")
     subject: Optional[str] = Field(default="General")        # e.g. "Mathematics", "Physics"
@@ -13,9 +14,18 @@ class ContextItem(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class InstituteConfig(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    institute_id: str = Field(index=True, unique=True)
+    config_json: str = Field(default="{}")
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Exam(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str
+    institute_id: Optional[str] = Field(default="default-institute")
+    subject: Optional[str] = Field(default="General")
     max_marks: int = Field(default=100)
     n_questions: int = Field(default=5)
     per_unit_weights_json: Optional[str] = Field(default=None)

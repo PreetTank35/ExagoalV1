@@ -35,19 +35,19 @@ export default function InstituteOnboarding() {
   const finish = () => router.push("/institute/dashboard");
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-[#F8FBFF] flex flex-col">
       {/* Top Bar */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+      <div className="bg-white border-b-2 border-[#172033] px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+          <div className="w-9 h-9 bg-[#2563EB] border-2 border-[#172033] shadow-[3px_3px_0_#172033] flex items-center justify-center">
             <BookOpen className="w-4 h-4 text-white" />
           </div>
-          <span className="text-gray-900 font-bold text-lg">ExaGo</span>
-          <span className="ml-2 text-xs bg-blue-50 text-blue-600 font-semibold px-2 py-0.5 rounded-full">
+          <span className="text-[#172033] font-black text-lg">ExaGo</span>
+          <span className="ml-2 text-xs bg-[#DBEAFE] text-[#1D4ED8] border-2 border-[#172033] font-black px-2 py-0.5">
             Institute Setup
           </span>
         </div>
-        <button onClick={() => router.push("/login")} className="text-sm text-gray-500 hover:text-gray-700">
+        <button onClick={() => router.push("/login")} className="text-sm font-bold text-[#4B5A73] hover:text-[#172033]">
           Exit
         </button>
       </div>
@@ -60,44 +60,44 @@ export default function InstituteOnboarding() {
               <div key={s.id} className="flex items-center flex-1 last:flex-none">
                 <div className="flex flex-col items-center gap-1">
                   <div
-                    className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
-                      step > s.id ? "bg-green-500 text-white" :
-                      step === s.id ? "bg-indigo-600 text-white" : "bg-gray-200 text-gray-500"
+                    className={`w-10 h-10 border-2 border-[#172033] flex items-center justify-center text-sm font-black transition-all ${
+                      step > s.id ? "bg-[#16A34A] text-white" :
+                      step === s.id ? "bg-[#2563EB] text-[#172033]" : "bg-[#E2E8F0] text-[#4B5A73]"
                     }`}
                   >
                     {step > s.id ? <CheckCircle2 className="w-4 h-4" /> : s.id}
                   </div>
-                  <span className={`text-[10px] sm:text-xs font-medium ${step === s.id ? "text-indigo-600" : "text-gray-400"} hidden sm:block`}>
+                  <span className={`text-[10px] sm:text-xs font-black ${step === s.id ? "text-[#1D4ED8]" : "text-[#718096]"} hidden sm:block`}>
                     {s.label}
                   </span>
                 </div>
                 {i < STEPS.length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-2 mb-4 ${step > s.id ? "bg-indigo-500" : "bg-gray-200"}`} />
+                  <div className={`flex-1 h-1 mx-2 mb-4 ${step > s.id ? "bg-[#2563EB]" : "bg-[#CBD5E1]"}`} />
                 )}
               </div>
             ))}
           </div>
-          <div className="mt-4 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div className="mt-4 h-2 bg-[#E2E8F0] border-2 border-[#172033] overflow-hidden">
             <div
-              className="h-full bg-indigo-600 rounded-full transition-all duration-500"
+              className="h-full bg-[#2563EB] transition-all duration-500"
               style={{ width: `${((step - 1) / (STEPS.length - 1)) * 100}%` }}
             />
           </div>
         </div>
 
         {/* Card */}
-        <div className="w-full max-w-2xl bg-white rounded-2xl border border-gray-200 shadow-sm">
+        <div className="w-full max-w-2xl bg-white border-2 border-[#172033] shadow-[6px_6px_0_#172033]">
 
           {/* Step 1: Institute Details */}
           {step === 1 && (
             <div className="p-8">
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
-                  <Building2 className="w-5 h-5 text-indigo-600" />
+                <div className="w-11 h-11 bg-[#DBEAFE] border-2 border-[#172033] flex items-center justify-center">
+                  <Building2 className="w-5 h-5 text-[#1D4ED8]" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">Institute Details</h2>
-                  <p className="text-sm text-gray-500">Basic information about your institution</p>
+                  <h2 className="text-xl font-black text-[#172033]">Institute Details</h2>
+                  <p className="text-sm text-[#4B5A73]">Basic information about your institution</p>
                 </div>
               </div>
 
@@ -110,13 +110,13 @@ export default function InstituteOnboarding() {
                   { key: "state", label: "State", placeholder: "Maharashtra" },
                 ].map(({ key, label, placeholder, col }) => (
                   <div key={key} className={col === 2 ? "col-span-2" : ""}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+                    <label className="block text-sm font-bold text-[#4B5A73] mb-1.5">{label}</label>
                     <input
                       type="text"
                       value={form[key as keyof typeof form]}
                       onChange={(e) => updateForm(key, e.target.value)}
                       placeholder={placeholder}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                      className="w-full px-4 py-2.5 border-2 border-[#CBD5E1] bg-[#FFFFFF] text-sm text-[#172033] outline-none focus:border-[#172033] transition-all"
                     />
                   </div>
                 ))}
@@ -128,12 +128,12 @@ export default function InstituteOnboarding() {
           {step === 2 && (
             <div className="p-8">
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
-                  <Users className="w-5 h-5 text-blue-600" />
+                <div className="w-11 h-11 bg-[#DBEAFE] border-2 border-[#172033] flex items-center justify-center">
+                  <Users className="w-5 h-5 text-[#1D4ED8]" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">Admin Account</h2>
-                  <p className="text-sm text-gray-500">The primary administrator for your institution</p>
+                  <h2 className="text-xl font-black text-[#172033]">Admin Account</h2>
+                  <p className="text-sm text-[#4B5A73]">The primary administrator for your institution</p>
                 </div>
               </div>
               <div className="space-y-4">
@@ -144,18 +144,18 @@ export default function InstituteOnboarding() {
                   { key: "adminRole", label: "Designation", placeholder: "Principal / HOD / Exam Controller" },
                 ].map(({ key, label, placeholder, type = "text" }) => (
                   <div key={key}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+                    <label className="block text-sm font-bold text-[#4B5A73] mb-1.5">{label}</label>
                     <input
                       type={type}
                       value={form[key as keyof typeof form]}
                       onChange={(e) => updateForm(key, e.target.value)}
                       placeholder={placeholder}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                      className="w-full px-4 py-2.5 border-2 border-[#CBD5E1] bg-[#FFFFFF] text-sm text-[#172033] outline-none focus:border-[#172033] transition-all"
                     />
                   </div>
                 ))}
-                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                  <p className="text-xs text-blue-700 font-medium">
+                <div className="bg-[#EFF6FF] border-2 border-[#172033] p-4">
+                  <p className="text-xs text-[#334155] font-bold">
                     You can add more admins, teachers, and sub-admins after completing setup from the Institute Dashboard.
                   </p>
                 </div>
@@ -167,38 +167,38 @@ export default function InstituteOnboarding() {
           {step === 3 && (
             <div className="p-8">
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center">
-                  <Cpu className="w-5 h-5 text-orange-600" />
+                <div className="w-11 h-11 bg-[#DBEAFE] border-2 border-[#172033] flex items-center justify-center">
+                  <Cpu className="w-5 h-5 text-[#1D4ED8]" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">ERP Integration</h2>
-                  <p className="text-sm text-gray-500">Skip this if you don't have an ERP system — you can always import data manually</p>
+                  <h2 className="text-xl font-black text-[#172033]">ERP Integration</h2>
+                  <p className="text-sm text-[#4B5A73]">Skip this if you don't have an ERP system — you can always import data manually</p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 mb-6 mt-3">
-                <Database className="w-4 h-4 text-indigo-500" />
-                <span className="text-xs font-semibold text-indigo-700">Supported ERP systems: Fedena, TrackAcad, College ERP, custom REST APIs</span>
+                <Database className="w-4 h-4 text-[#1D4ED8]" />
+                <span className="text-xs font-semibold text-[#1D4ED8]">Supported ERP systems: Fedena, TrackAcad, College ERP, custom REST APIs</span>
               </div>
 
               {/* Step-by-step guide */}
               <div className="space-y-3">
                 {ERP_STEPS.map(({ step: s, title, desc }) => (
-                  <div key={s} className="border border-gray-200 rounded-xl overflow-hidden">
+                  <div key={s} className="border-2 border-[#172033] overflow-hidden">
                     <button
                       onClick={() => setErpExpanded(erpExpanded === s ? null : s)}
-                      className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-[#F8FBFF] transition-colors"
                     >
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                        erpExpanded === s ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-500"
+                      <div className={`w-8 h-8 border-2 border-[#172033] flex items-center justify-center text-xs font-black flex-shrink-0 ${
+                        erpExpanded === s ? "bg-[#2563EB] text-[#172033]" : "bg-[#E2E8F0] text-[#4B5A73]"
                       }`}>
                         {s}
                       </div>
-                      <span className="text-sm font-semibold text-gray-800 text-left flex-1">{title}</span>
+                      <span className="text-sm font-black text-[#172033] text-left flex-1">{title}</span>
                     </button>
                     {erpExpanded === s && (
                       <div className="px-4 pb-4">
-                        <p className="text-sm text-gray-500 mb-3 ml-10">{desc}</p>
+                        <p className="text-sm text-[#4B5A73] mb-3 ml-10">{desc}</p>
                         {s === 1 && (
                           <div className="ml-10">
                             <input
@@ -206,7 +206,7 @@ export default function InstituteOnboarding() {
                               value={form.erpUrl}
                               onChange={(e) => updateForm("erpUrl", e.target.value)}
                               placeholder="https://erp.yourinstitute.ac.in"
-                              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                              className="w-full px-4 py-2.5 border border-[#CBD5E1]  text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#172033]"
                             />
                           </div>
                         )}
@@ -217,7 +217,7 @@ export default function InstituteOnboarding() {
                               value={form.erpToken}
                               onChange={(e) => updateForm("erpToken", e.target.value)}
                               placeholder="Paste API token here"
-                              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                              className="w-full px-4 py-2.5 border border-[#CBD5E1]  text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#172033]"
                             />
                           </div>
                         )}
@@ -228,12 +228,12 @@ export default function InstituteOnboarding() {
               </div>
 
               <div className="mt-4 flex gap-3">
-                <button className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2">
+                <button className="flex-1 bg-[#2563EB] hover:bg-[#1D4ED8] border-2 border-[#172033] text-[#172033] text-sm font-black py-2.5 shadow-[3px_3px_0_#172033] transition-all flex items-center justify-center gap-2">
                   <Link2 className="w-4 h-4" /> Test Connection
                 </button>
                 <button
                   onClick={() => setStep(4)}
-                  className="text-sm font-medium text-gray-500 hover:text-gray-700 px-4"
+                  className="text-sm font-bold text-[#4B5A73] hover:text-[#172033] px-4"
                 >
                   Skip for now →
                 </button>
@@ -245,12 +245,12 @@ export default function InstituteOnboarding() {
           {step === 4 && (
             <div className="p-8">
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-green-600" />
+                <div className="w-10 h-10 bg-[#E4F3E3] flex items-center justify-center">
+                  <FileText className="w-5 h-5 text-[#15803D]" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">Review & Activate</h2>
-                  <p className="text-sm text-gray-500">Your institute account will be created on activation</p>
+                  <h2 className="text-xl font-black text-[#172033]">Review & Activate</h2>
+                  <p className="text-sm text-[#4B5A73]">Your institute account will be created on activation</p>
                 </div>
               </div>
 
@@ -277,22 +277,22 @@ export default function InstituteOnboarding() {
                     items: [{ label: "Status", value: form.erpUrl ? "Configured" : "Skipped" }],
                   },
                 ].map(({ title, items }) => (
-                  <div key={title} className="border border-gray-200 rounded-xl overflow-hidden">
-                    <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-200">
-                      <span className="text-xs font-bold text-gray-600 uppercase tracking-wide">{title}</span>
+                  <div key={title} className="border-2 border-[#172033] overflow-hidden">
+                    <div className="bg-[#F8FBFF] px-4 py-2.5 border-b border-[#CBD5E1]">
+                      <span className="text-xs font-black text-[#4B5A73] uppercase tracking-wide">{title}</span>
                     </div>
-                    <div className="divide-y divide-gray-100">
+                    <div className="divide-y-2 divide-[#F1F5F9]">
                       {items.map(({ label, value }) => (
                         <div key={label} className="flex items-center justify-between px-4 py-2.5">
-                          <span className="text-sm text-gray-500">{label}</span>
-                          <span className="text-sm font-medium text-gray-800">{value}</span>
+                          <span className="text-sm text-[#4B5A73]">{label}</span>
+                          <span className="text-sm font-black text-[#172033]">{value}</span>
                         </div>
                       ))}
                     </div>
                   </div>
                 ))}
-                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
-                  <p className="text-sm text-indigo-800 font-medium">
+                <div className="bg-[#DBEAFE] border-2 border-[#172033] p-4">
+                  <p className="text-sm text-[#334155] font-bold">
                     🏫 Your institute dashboard will be activated immediately. You can begin adding students, teachers, and course documents right away.
                   </p>
                 </div>
@@ -301,25 +301,25 @@ export default function InstituteOnboarding() {
           )}
 
           {/* Navigation */}
-          <div className="flex items-center justify-between px-8 py-5 border-t border-gray-100">
+          <div className="flex items-center justify-between px-8 py-5 border-t-2 border-[#172033]">
             <button
               onClick={() => step > 1 ? setStep(step - 1) : router.push("/login")}
-              className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700"
+              className="flex items-center gap-2 text-sm font-medium text-[#718096] hover:text-[#334155]"
             >
               <ArrowLeft className="w-4 h-4" /> {step === 1 ? "Back to Login" : "Previous"}
             </button>
-            <div className="text-xs text-gray-400">Step {step} of {STEPS.length}</div>
+            <div className="text-xs text-[#718096]">Step {step} of {STEPS.length}</div>
             {step < STEPS.length ? (
               <button
                 onClick={() => setStep(step + 1)}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-all"
+                className="flex items-center gap-2 bg-[#2563EB] hover:bg-[#1D4ED8] border-2 border-[#172033] text-[#172033] text-sm font-black px-5 py-2.5 shadow-[3px_3px_0_#172033] transition-all"
               >
                 Continue <ArrowRight className="w-4 h-4" />
               </button>
             ) : (
               <button
                 onClick={finish}
-                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-all"
+                className="flex items-center gap-2 bg-[#16A34A] hover:bg-[#15803D] border-2 border-[#172033] text-white text-sm font-black px-5 py-2.5 shadow-[3px_3px_0_#172033] transition-all"
               >
                 <CheckCircle2 className="w-4 h-4" /> Activate Institute
               </button>

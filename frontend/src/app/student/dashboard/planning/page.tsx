@@ -9,9 +9,9 @@ type Priority = "high" | "medium" | "low";
 type Task = { id: number; text: string; done: boolean; priority: Priority; due: string };
 
 const PRIORITY_STYLE: Record<Priority, string> = {
-  high: "bg-red-50 text-red-600 border-red-200",
-  medium: "bg-amber-50 text-amber-600 border-amber-200",
-  low: "bg-green-50 text-green-600 border-green-200",
+  high: "bg-rose-50 text-rose-700 border-red-200",
+  medium: "bg-[#DBEAFE] text-[#2563EB] border-2 border-[#2563EB]",
+  low: "bg-emerald-50 text-emerald-700 border-2 border-emerald-700",
 };
 
 const INITIAL_TASKS: Task[] = [
@@ -64,23 +64,23 @@ export default function PlanningPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Planning</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Your goals, tasks, and upcoming schedule</p>
+          <h2 className="text-2xl font-bold text-[#172033]">Planning</h2>
+          <p className="text-sm text-[#4B5A73] mt-0.5">Your goals, tasks, and upcoming schedule</p>
         </div>
         <div className="flex gap-2">
-          <div className="bg-white border border-gray-200 rounded-xl px-4 py-2 text-center">
-            <div className="text-lg font-bold text-gray-900">{pending}</div>
-            <div className="text-xs text-gray-500">Pending</div>
+          <div className="bg-white border border-2 border-[#172033] rounded-none px-4 py-2 text-center">
+            <div className="text-lg font-bold text-[#172033]">{pending}</div>
+            <div className="text-xs text-[#4B5A73]">Pending</div>
           </div>
-          <div className="bg-white border border-gray-200 rounded-xl px-4 py-2 text-center">
-            <div className="text-lg font-bold text-green-600">{done}</div>
-            <div className="text-xs text-gray-500">Done</div>
+          <div className="bg-white border border-2 border-[#172033] rounded-none px-4 py-2 text-center">
+            <div className="text-lg font-bold text-emerald-700">{done}</div>
+            <div className="text-xs text-[#4B5A73]">Done</div>
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-xl w-fit max-w-full">
+      <div className="flex flex-wrap gap-1 bg-[#EFF6FF] p-1 rounded-none w-fit max-w-full">
         {([
           { key: "tasks", label: "📋 To-Do List" },
           { key: "goals", label: "🎯 Goals" },
@@ -89,8 +89,8 @@ export default function PlanningPage() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-              tab === key ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            className={`px-4 py-2 rounded-none text-sm font-semibold transition-all duration-200 ${
+              tab === key ? "bg-white text-[#2563EB] shadow-[3px_3px_0_0_#172033]" : "text-[#4B5A73] hover:text-[#172033]"
             }`}
           >
             {label}
@@ -109,47 +109,47 @@ export default function PlanningPage() {
               onChange={(e) => setNewTask(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addTask()}
               placeholder="Add a new task…"
-              className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+              className="flex-1 px-4 py-2.5 border border-2 border-[#172033] rounded-none text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all"
             />
             <button
               onClick={addTask}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors"
+              className="flex items-center gap-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-[#172033] border-2 border-[#172033] shadow-[3px_3px_0_0_#172033] text-sm font-semibold px-4 py-2.5 rounded-none transition-colors"
             >
               <Plus className="w-4 h-4" /> Add
             </button>
           </div>
 
           {/* Task list */}
-          <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+          <div className="bg-white rounded-none border border-2 border-[#172033] divide-y divide-gray-100 overflow-hidden">
             {tasks.map(({ id, text, done, priority, due }) => (
               <div key={id} className={`flex items-center gap-3 px-5 py-3.5 ${done ? "opacity-50" : ""}`}>
                 <button onClick={() => toggleTask(id)} className="flex-shrink-0">
                   {done ? (
-                    <CheckSquare className="w-5 h-5 text-indigo-500" />
+                    <CheckSquare className="w-5 h-5 text-[#2563EB]" />
                   ) : (
-                    <Square className="w-5 h-5 text-gray-300" />
+                    <Square className="w-5 h-5 text-slate-400" />
                   )}
                 </button>
                 <div className="flex-1 min-w-0">
                   <span
                     className={`text-sm font-medium ${
-                      done ? "line-through text-gray-400" : "text-gray-800"
+                      done ? "line-through text-[#718096]" : "text-[#172033]"
                     }`}
                   >
                     {text}
                   </span>
                 </div>
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${PRIORITY_STYLE[priority]}`}>
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-none border ${PRIORITY_STYLE[priority]}`}>
                   {priority}
                 </span>
-                <span className="text-xs text-gray-400 flex items-center gap-1 flex-shrink-0">
+                <span className="text-xs text-[#718096] flex items-center gap-1 flex-shrink-0">
                   <Clock className="w-3 h-3" /> {due}
                 </span>
                 <button
                   onClick={() => removeTask(id)}
-                  className="flex-shrink-0 p-1 hover:bg-red-50 rounded-lg transition-colors"
+                  className="flex-shrink-0 p-1 hover:bg-rose-50 rounded-none transition-colors"
                 >
-                  <X className="w-3.5 h-3.5 text-gray-300 hover:text-red-400" />
+                  <X className="w-3.5 h-3.5 text-slate-400 hover:text-rose-600" />
                 </button>
               </div>
             ))}
@@ -161,26 +161,26 @@ export default function PlanningPage() {
       {tab === "goals" && (
         <div className="space-y-4">
           {GOALS.map(({ title, progress, due, status }) => (
-            <div key={title} className="bg-white rounded-2xl border border-gray-200 p-5">
+            <div key={title} className="bg-white rounded-none border border-2 border-[#172033] p-5">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-start gap-2 flex-1 min-w-0">
-                  <Target className="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0" />
-                  <h4 className="text-sm font-semibold text-gray-900">{title}</h4>
+                  <Target className="w-4 h-4 text-[#2563EB] mt-0.5 flex-shrink-0" />
+                  <h4 className="text-sm font-semibold text-[#172033]">{title}</h4>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                   {status === "on-track" ? (
-                    <span className="flex items-center gap-1 text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
+                    <span className="flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-none border border-2 border-emerald-700">
                       <CheckCircle2 className="w-3 h-3" /> On Track
                     </span>
                   ) : (
-                    <span className="flex items-center gap-1 text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                    <span className="flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-none border border-2 border-sky-700">
                       <AlertCircle className="w-3 h-3" /> At Risk
                     </span>
                   )}
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+              <div className="flex items-center justify-between text-xs text-[#718096] mb-2">
                 <span className="flex items-center gap-1">
                   <TrendingUp className="w-3 h-3" /> {progress}% complete
                 </span>
@@ -189,10 +189,10 @@ export default function PlanningPage() {
                 </span>
               </div>
 
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-2 bg-slate-100 border-2 border-[#172033] rounded-none overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    status === "on-track" ? "bg-indigo-500" : "bg-amber-400"
+                  className={`h-full transition-all duration-500 ${
+                    status === "on-track" ? "bg-[#2563EB]" : "bg-sky-400"
                   }`}
                   style={{ width: `${progress}%` }}
                 />
@@ -206,33 +206,33 @@ export default function PlanningPage() {
       {tab === "calendar" && (
         <div className="space-y-3">
           {UPCOMING.map(({ title, date, type }) => (
-            <div key={title} className="flex items-center gap-4 bg-white rounded-2xl border border-gray-200 px-5 py-4">
+            <div key={title} className="flex items-center gap-4 bg-white rounded-none border border-2 border-[#172033] px-5 py-4">
               <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                className={`w-10 h-10 rounded-none flex items-center justify-center flex-shrink-0 ${
                   type === "exam"
-                    ? "bg-red-50 text-red-500"
+                    ? "bg-rose-50 text-rose-700"
                     : type === "deadline"
-                    ? "bg-amber-50 text-amber-500"
+                    ? "bg-sky-50 text-sky-700"
                     : type === "event"
-                    ? "bg-indigo-50 text-indigo-500"
-                    : "bg-green-50 text-green-500"
+                    ? "bg-[#EFF6FF] text-[#2563EB]"
+                    : "bg-emerald-50 text-emerald-700"
                 }`}
               >
                 <Calendar className="w-5 h-5" />
               </div>
               <div className="flex-1">
-                <p className="text-sm font-semibold text-gray-900">{title}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{date}</p>
+                <p className="text-sm font-semibold text-[#172033]">{title}</p>
+                <p className="text-xs text-[#718096] mt-0.5">{date}</p>
               </div>
               <span
-                className={`text-xs font-bold uppercase px-2.5 py-1 rounded-full ${
+                className={`text-xs font-bold uppercase px-2.5 py-1 rounded-none ${
                   type === "exam"
-                    ? "bg-red-50 text-red-500"
+                    ? "bg-rose-50 text-rose-700"
                     : type === "deadline"
-                    ? "bg-amber-50 text-amber-600"
+                    ? "bg-sky-50 text-sky-700"
                     : type === "event"
-                    ? "bg-indigo-50 text-indigo-600"
-                    : "bg-green-50 text-green-600"
+                    ? "bg-[#EFF6FF] text-[#2563EB]"
+                    : "bg-emerald-50 text-emerald-700"
                 }`}
               >
                 {type}

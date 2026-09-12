@@ -1,159 +1,303 @@
 "use client";
+
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  LayoutDashboard, Brain, MessageCircle, Gamepad2,
-  CalendarCheck2, Bell, Settings, LogOut, BookOpen,
-  ChevronRight, User, Menu, X
+  LayoutDashboard,
+  Brain,
+  MessageCircle,
+  Gamepad2,
+  CalendarCheck2,
+  Bell,
+  Settings,
+  LogOut,
+  BookOpen,
+  ChevronRight,
+  ChevronLeft,
+  User,
+  Menu,
+  X,
+  PanelLeftOpen,
 } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/student/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/student/dashboard/learning-state", icon: Brain, label: "Learning State" },
-  { href: "/student/dashboard/guru", icon: MessageCircle, label: "AI Guru" },
-  { href: "/student/dashboard/planning", icon: CalendarCheck2, label: "Planning" },
-  { href: "/student/dashboard/activities", icon: Gamepad2, label: "Activities" },
+  {
+    href: "/student/dashboard/learning-state",
+    icon: Brain,
+    label: "Learning State",
+  },
+  {
+    href: "/student/dashboard/guru",
+    icon: MessageCircle,
+    label: "AI Guru",
+  },
+  {
+    href: "/student/dashboard/planning",
+    icon: CalendarCheck2,
+    label: "Planning",
+  },
+  {
+    href: "/student/dashboard/activities",
+    icon: Gamepad2,
+    label: "Activities",
+  },
 ];
 
-export default function StudentDashboardLayout({ children }: { children: React.ReactNode }) {
+export default function StudentDashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const pathname = usePathname();
   const router = useRouter();
+
   const [notifCount] = useState(3);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Close sidebar on path change
   useEffect(() => {
     setSidebarOpen(false);
   }, [pathname]);
 
-  const currentPage = NAV_ITEMS.find((n) => n.href === pathname)?.label ?? "Dashboard";
+  const currentPage =
+    NAV_ITEMS.find((n) => n.href === pathname)?.label ?? "Dashboard";
 
   return (
-    <div className="flex min-h-screen bg-gray-50 font-[Poppins]">
-      {/* Sidebar Overlay backdrop */}
+    <div className="flex min-h-screen bg-[#F4F8FF] font-[Poppins] text-[#172033]">
       {sidebarOpen && (
         <div
           onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 bg-gray-900/40 z-30 lg:hidden transition-opacity duration-300"
+          className="fixed inset-0 bg-[#172033]/40 z-30 lg:hidden transition-opacity duration-300"
         />
       )}
 
-      {/* Sidebar */}
       <aside
-        className={`w-60 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col fixed top-0 left-0 h-full z-40 transition-transform duration-300 ease-in-out lg:translate-x-0 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`
+          ${sidebarCollapsed ? "lg:w-20" : "lg:w-60"}
+          w-60 flex-shrink-0 bg-white border-r-2 border-[#172033]
+          flex flex-col fixed top-0 left-0 h-full z-40
+          transition-all duration-300 ease-in-out
+          lg:translate-x-0
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+        `}
       >
-        {/* Brand */}
-        <div className="px-5 py-5 border-b border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+        {/* Sidebar Header */}
+        <div
+          className={`px-4 py-5 border-b-2 border-[#172033] flex items-center ${
+            sidebarCollapsed ? "lg:justify-center" : "justify-between"
+          }`}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 bg-[#2563EB] border-2 border-[#172033] shadow-[3px_3px_0_#172033] flex items-center justify-center flex-shrink-0">
               <BookOpen className="w-4 h-4 text-white" />
             </div>
-            <span className="text-gray-900 font-bold text-base">ExaGo</span>
+
+            <span
+              className={`text-[#172033] font-black text-base truncate ${
+                sidebarCollapsed ? "lg:hidden" : ""
+              }`}
+            >
+              ExaGo
+            </span>
           </div>
+
           <button
             onClick={() => setSidebarOpen(false)}
-            className="lg:hidden p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+            className="lg:hidden p-1.5 border-2 border-transparent hover:border-[#172033] hover:bg-[#DBEAFE] transition-colors"
+            title="Close sidebar"
           >
-            <X className="w-4 h-4 text-gray-500" />
+            <X className="w-4 h-4 text-[#2563EB]" />
           </button>
         </div>
 
-        {/* User card */}
-        <div className="mx-3 mt-4 p-3 bg-indigo-50 rounded-xl border border-indigo-100">
+        {/* Desktop Hide / Show Button */}
+        <button
+          onClick={() => setSidebarCollapsed((prev) => !prev)}
+          title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+          aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+          className="
+            hidden lg:flex
+            absolute top-1/2 -translate-y-1/2 -right-[15px]
+            w-7 h-10
+            bg-[#2563EB]
+            border-2 border-[#172033]
+            shadow-[3px_3px_0_#172033]
+            items-center justify-center
+            z-50
+            hover:bg-[#1D4ED8]
+            active:translate-x-[2px]
+            active:shadow-[1px_1px_0_#172033]
+            transition-all
+          "
+        >
+          {sidebarCollapsed ? (
+            <ChevronRight className="w-4 h-4 text-white" strokeWidth={3} />
+          ) : (
+            <ChevronLeft className="w-4 h-4 text-white" strokeWidth={3} />
+          )}
+        </button>
+
+        {/* Student Profile */}
+        <div
+          className={`mx-3 mt-4 p-3 bg-[#DBEAFE] border-2 border-[#172033] shadow-[3px_3px_0_#172033] ${
+            sidebarCollapsed ? "lg:px-2 lg:flex lg:justify-center" : ""
+          }`}
+        >
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 bg-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+            <div className="w-9 h-9 bg-[#2563EB] border-2 border-[#172033] flex items-center justify-center text-white font-black text-sm flex-shrink-0">
               JP
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-900 truncate">Jayesh Patil</p>
-              <p className="text-xs text-gray-500 truncate">B.Tech · SY · MIT AOE</p>
+
+            <div
+              className={`min-w-0 ${sidebarCollapsed ? "lg:hidden" : ""}`}
+            >
+              <p className="text-sm font-black text-[#172033] truncate">
+                Jayesh Patil
+              </p>
+
+              <p className="text-xs text-[#4B5A73] truncate">
+                B.Tech · SY · MIT AOE
+              </p>
             </div>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">
-            Main Menu
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          <p
+            className={`text-[10px] font-black text-[#2563EB] uppercase tracking-wider px-2 mb-2 ${
+              sidebarCollapsed ? "lg:text-center lg:px-0" : ""
+            }`}
+          >
+            {sidebarCollapsed ? "•••" : "Main Menu"}
           </p>
+
           {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
             const active = pathname === href;
+
             return (
               <Link
                 key={href}
                 href={href}
                 onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                title={sidebarCollapsed ? label : undefined}
+                className={`flex items-center gap-3 px-3 py-2.5 border-2 transition-all duration-150 ${
+                  sidebarCollapsed ? "lg:justify-center lg:px-2" : ""
+                } ${
                   active
-                    ? "bg-indigo-600 text-white"
-                    : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                    ? "bg-[#2563EB] border-[#172033] text-white font-black shadow-[3px_3px_0_#172033]"
+                    : "border-transparent text-[#4B5A73] font-bold hover:bg-[#EFF6FF] hover:border-[#172033] hover:text-[#172033]"
                 }`}
               >
                 <Icon className="w-4 h-4 flex-shrink-0" />
-                <span className="flex-1">{label}</span>
-                {active && <ChevronRight className="w-3.5 h-3.5 opacity-60" />}
+
+                <span
+                  className={`flex-1 ${
+                    sidebarCollapsed ? "lg:hidden" : ""
+                  }`}
+                >
+                  {label}
+                </span>
+
+                {active && !sidebarCollapsed && (
+                  <ChevronRight className="w-3.5 h-3.5" />
+                )}
               </Link>
             );
           })}
         </nav>
 
-        {/* Bottom */}
-        <div className="px-3 pb-4 space-y-0.5 border-t border-gray-100 pt-3">
-          <button className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 w-full">
-            <Settings className="w-4 h-4" />
-            Settings
+        {/* Bottom Actions */}
+        <div className="px-3 pb-4 space-y-1 border-t-2 border-[#172033] pt-3">
+          <button
+            title={sidebarCollapsed ? "Settings" : undefined}
+            className={`flex items-center gap-3 px-3 py-2.5 border-2 border-transparent text-sm font-bold text-[#4B5A73] hover:bg-[#EFF6FF] hover:border-[#172033] hover:text-[#172033] w-full transition-colors ${
+              sidebarCollapsed ? "lg:justify-center lg:px-2" : ""
+            }`}
+          >
+            <Settings className="w-4 h-4 flex-shrink-0" />
+
+            <span className={sidebarCollapsed ? "lg:hidden" : ""}>
+              Settings
+            </span>
           </button>
+
           <button
             onClick={() => {
               setSidebarOpen(false);
               router.push("/login");
             }}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 w-full transition-colors"
+            title={sidebarCollapsed ? "Logout" : undefined}
+            className={`flex items-center gap-3 px-3 py-2.5 border-2 border-transparent text-sm font-bold text-[#4B5A73] hover:bg-red-50 hover:border-red-600 hover:text-red-600 w-full transition-colors ${
+              sidebarCollapsed ? "lg:justify-center lg:px-2" : ""
+            }`}
           >
-            <LogOut className="w-4 h-4" />
-            Logout
+            <LogOut className="w-4 h-4 flex-shrink-0" />
+
+            <span className={sidebarCollapsed ? "lg:hidden" : ""}>
+              Logout
+            </span>
           </button>
         </div>
       </aside>
 
-      {/* Main Area */}
-      <div className="flex-1 lg:ml-60 flex flex-col min-w-0">
-        {/* Topbar */}
-        <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between sticky top-0 z-20">
+      {/* Main Content */}
+      <div
+        className={`flex-1 flex flex-col min-w-0 transition-[margin] duration-300 ${
+          sidebarCollapsed ? "lg:ml-20" : "lg:ml-60"
+        }`}
+      >
+        {/* Top Header */}
+        <header className="bg-white border-b-2 border-[#172033] px-4 sm:px-6 py-4 flex items-center justify-between sticky top-0 z-20">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-2 -ml-2 rounded-xl hover:bg-gray-100 transition-colors"
+              className="lg:hidden p-2 -ml-2 border-2 border-transparent hover:border-[#172033] hover:bg-[#DBEAFE] transition-colors"
+              title="Open sidebar"
             >
-              <Menu className="w-5 h-5 text-gray-500" />
+              <Menu className="w-5 h-5 text-[#2563EB]" />
             </button>
+
             <div>
-              <h1 className="text-base font-bold text-gray-900">{currentPage}</h1>
-              <p className="text-xs text-gray-400">
+              <h1 className="text-base font-black text-[#172033]">
+                {currentPage}
+              </h1>
+
+              <p className="text-xs text-[#718096]">
                 {new Date().toLocaleDateString("en-IN", {
-                  weekday: "long", day: "numeric", month: "long", year: "numeric",
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
                 })}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button className="relative p-2 rounded-xl hover:bg-gray-100 transition-colors">
-              <Bell className="w-4 h-4 text-gray-500" />
+
+          {/* Header Actions */}
+          <div className="flex items-center gap-2">
+            <button className="relative p-2 border-2 border-transparent hover:border-[#172033] hover:bg-[#DBEAFE] transition-colors">
+              <Bell className="w-4 h-4 text-[#2563EB]" />
+
               {notifCount > 0 && (
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+                <span className="absolute top-0 right-0 min-w-4 h-4 px-0.5 bg-[#2563EB] border-2 border-[#172033] text-[8px] font-black text-white flex items-center justify-center">
+                  {notifCount}
+                </span>
               )}
             </button>
-            <button className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
-              <User className="w-4 h-4 text-gray-500" />
+
+            <button className="p-2 border-2 border-transparent hover:border-[#172033] hover:bg-[#DBEAFE] transition-colors">
+              <User className="w-4 h-4 text-[#2563EB]" />
             </button>
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 p-4 sm:p-6 overflow-y-auto min-w-0">{children}</main>
+        {/* Page Content */}
+        <main className="flex-1 p-4 sm:p-6 overflow-y-auto min-w-0">
+          {children}
+        </main>
       </div>
     </div>
   );

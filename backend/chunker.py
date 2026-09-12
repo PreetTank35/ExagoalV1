@@ -12,6 +12,8 @@ Supports:
 
 import json
 import re
+import io
+import os
 from typing import List, Dict, Any, Optional, Tuple
 
 # ── Comprehensive Academic Subject Keywords ─────────────────────────────────
@@ -619,3 +621,176 @@ class UniversalChunker:
             else:
                 lines.append(f"{k}: {v}")
         return "\n".join(lines)
+
+    # ── Universal Multi-Format Document Ingestion Engine ─────────────────────
+    @classmethod
+    def parse_and_chunk_file(
+        cls,
+        file_bytes: bytes,
+        filename: str,
+        fallback_subject: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Universal file parser and chunker for any academic document:
+        Supports:
+          - PDF (.pdf) via pypdf
+          - Word (.docx, .doc) via python-docx
+          - PowerPoint (.pptx, .ppt) via python-pptx
+          - Text / Markdown (.txt, .md, .tex, .csv)
+          - JSON (.json) via UniversalChunker schema extraction
+        """
+        ext = os.path.splitext(filename)[1].lower()
+
+        # 1. JSON handling
+        if ext == ".json":
+            try:
+                raw_data = json.loads(file_bytes.decode("utf-8"))
+                items = cls.chunk_json_data(raw_data, filename=filename)
+                if fallback_subject and fallback_subject != "General":
+                    for it in items:
+                        if it.get("subject") == "General":
+                            it["subject"] = fallback_subject
+                for it in items:
+                    it["file_type"] = "json"
+                return items
+            except Exception:
+                pass
+
+        # 2. Extract raw text with page/section structure
+        sections: List[Tuple[str, Optional[int]]] = []
+
+        if ext == ".pdf":
+            sections = cls._extract_pdf(file_bytes)
+        elif ext in (".docx", ".doc"):
+            sections = cls._extract_docx(file_bytes)
+        elif ext in (".pptx", ".ppt"):
+            sections = cls._extract_pptx(file_bytes)
+        else:
+            sections = cls._extract_text(file_bytes)
+
+        # 3. Overall subject detection across the document
+        sample_text = " ".join([s[0] for s in sections[:5]]) if sections else filename
+        doc_subject = detect_subject(f"{filename} {sample_text}", default_subject=fallback_subject or "General")
+
+        # 4. Chunk sections into semantic passages (~800-1100 chars)
+        chunks: List[Dict[str, Any]] = []
+        chunk_counter = 0
+
+        for text_block, page_num in sections:
+            if not text_block.strip():
+                continue
+
+            sub_chunks = split_sentences_into_chunks(text_block, max_chars=1100)
+            for chk in sub_chunks:
+                clean_chk = chk.strip()
+                if len(clean_chk) < 25:
+                    continue
+
+                chunk_counter += 1
+                chunk_subj = detect_subject(clean_chk, default_subject=doc_subject)
+
+                metadata: Dict[str, Any] = {
+                    "source_file": filename,
+                    "file_type": ext.lstrip(".") or "txt",
+                    "chunk_index": chunk_counter
+                }
+                if page_num is not None:
+                    metadata["page_number"] = page_num
+
+                chunks.append({
+                    "content": clean_chk,
+                    "item_type": f"{ext.lstrip('.') or 'text'}_chunk",
+                    "subject": chunk_subj,
+                    "source_file": filename,
+                    "file_type": ext.lstrip(".") or "txt",
+                    "metadata": metadata
+                })
+
+        # Fallback if no chunks generated
+        if not chunks:
+            raw_preview = file_bytes[:1000].decode("utf-8", errors="ignore").strip()
+            if raw_preview:
+                chunks.append({
+                    "content": raw_preview,
+                    "item_type": "text_chunk",
+                    "subject": doc_subject,
+                    "source_file": filename,
+                    "file_type": ext.lstrip(".") or "txt",
+                    "metadata": {"source_file": filename, "chunk_index": 1}
+                })
+
+        return chunks
+
+    @staticmethod
+    def _extract_pdf(file_bytes: bytes) -> List[Tuple[str, Optional[int]]]:
+        sections: List[Tuple[str, Optional[int]]] = []
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+            for idx, page in enumerate(reader.pages):
+                page_text = page.extract_text() or ""
+                if page_text.strip():
+                    sections.append((page_text.strip(), idx + 1))
+        except Exception as e:
+            print(f"[PDF Extract Warning] {e}")
+        return sections
+
+    @staticmethod
+    def _extract_docx(file_bytes: bytes) -> List[Tuple[str, Optional[int]]]:
+        sections: List[Tuple[str, Optional[int]]] = []
+        try:
+            import docx
+            doc = docx.Document(io.BytesIO(file_bytes))
+            current_section = []
+            for para in doc.paragraphs:
+                t = para.text.strip()
+                if t:
+                    current_section.append(t)
+                    if len("\n".join(current_section)) > 1000:
+                        sections.append(("\n".join(current_section), None))
+                        current_section = []
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = " | ".join([c.text.strip() for c in row.cells if c.text.strip()])
+                    if row_text:
+                        current_section.append(row_text)
+            if current_section:
+                sections.append(("\n".join(current_section), None))
+        except Exception as e:
+            print(f"[DOCX Extract Warning] {e}")
+        return sections
+
+    @staticmethod
+    def _extract_pptx(file_bytes: bytes) -> List[Tuple[str, Optional[int]]]:
+        sections: List[Tuple[str, Optional[int]]] = []
+        try:
+            from pptx import Presentation
+            prs = Presentation(io.BytesIO(file_bytes))
+            for idx, slide in enumerate(prs.slides):
+                slide_texts = []
+                for shape in slide.shapes:
+                    if shape.has_text_frame:
+                        for paragraph in shape.text_frame.paragraphs:
+                            t = paragraph.text.strip()
+                            if t:
+                                slide_texts.append(t)
+                if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
+                    note_text = slide.notes_slide.notes_text_frame.text.strip()
+                    if note_text:
+                        slide_texts.append(f"Notes: {note_text}")
+                if slide_texts:
+                    sections.append(("\n".join(slide_texts), idx + 1))
+        except Exception as e:
+            print(f"[PPTX Extract Warning] {e}")
+        return sections
+
+    @staticmethod
+    def _extract_text(file_bytes: bytes) -> List[Tuple[str, Optional[int]]]:
+        for enc in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
+            try:
+                text = file_bytes.decode(enc)
+                paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+                return [(p, None) for p in paragraphs] if paragraphs else [(text.strip(), None)]
+            except Exception:
+                continue
+        return [(file_bytes.decode("utf-8", errors="ignore").strip(), None)]

@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Cpu, Brain, FileText, Download, Zap, ChevronRight,
   BarChart3, Clock, CheckCircle2, Sliders, BookOpen,
-  ExternalLink, ArrowRight, Upload, Sparkles, Image as ImageIcon,
+  ExternalLink, ArrowRight, Sparkles, Image as ImageIcon,
   Edit3, Trash2, ArrowUp, ArrowDown, RefreshCw, AlertCircle,
   FolderOpen, Layers, Presentation, FileCode2, Printer, Plus, X,
   KeyRound, HelpCircle, Check, Eye
@@ -47,7 +47,7 @@ interface ExamItem {
 }
 
 const PIPELINE_STEPS = [
-  { step: 1, label: "Context Ingestion & FAISS", icon: BookOpen, desc: "Syllabi, course objectives, and question banks chunked & vectorized into FAISS dense store." },
+  { step: 1, label: "Exam Setup & Context Retrieval", icon: BookOpen, desc: "Select the subject and syllabus set. Existing context documents are retrieved automatically during exam generation." },
   { step: 2, label: "Blueprint & Weight Constraints", icon: Sliders, desc: "Configure title, target questions, marks total, and unit percentage weightages." },
   { step: 3, label: "AI Question & Plot Generation", icon: Brain, desc: "Single-pass LLM generates LaTeX questions with embedded executable Matplotlib diagrams." },
   { step: 4, label: "Studio Review & AI Refinement", icon: Sparkles, desc: "Inline math editing, teacher-prompt AI rewrites, and Matplotlib visual design stage." },
@@ -64,21 +64,50 @@ export default function ExamPage() {
   // Context / Ingestion State
   const [contextStats, setContextStats] = useState<ContextStats | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Blueprint / Generation Config
-  const [examTitle, setExamTitle] = useState("Advanced Calculus & Differential Equations");
+  // Tenant / Multi-tenant ID
+  const [instituteId, setInstituteId] = useState("default-institute");
+  const [instituteSubjects, setInstituteSubjects] = useState<
+    Array<{ subject: string; chunks_count: number; documents_count: number }>
+  >([]);
+
+  // Subject / Syllabus Selection
+  const [selectedSubject, setSelectedSubject] = useState("Mathematics");
+  const [selectedSyllabusSet, setSelectedSyllabusSet] = useState("SPPU 2024-25");
+
+  const FALLBACK_SUBJECTS = [
+    "Mathematics",
+    "Physics",
+    "Chemistry",
+    "Computer Science",
+    "Biology",
+    "Economics",
+    "History",
+    "Geography",
+    "Advanced Calculus & Differential Equations",
+    "Data Structures & Algorithms",
+    "Database Management Systems",
+    "Operating Systems"
+  ];
+
+  const SYLLABUS_SETS = [
+    "SPPU 2024-25",
+    "SPPU 2025-26",
+    "Institute Syllabus 2025-26",
+    "CBSE / University Standard",
+  ];
+
+  // Blueprint / Generation State
+  const [examTitle, setExamTitle] = useState("Mathematics Examination");
   const [nQuestions, setNQuestions] = useState(4);
   const [maxMarks, setMaxMarks] = useState(100);
-  const [unitWeights, setUnitWeights] = useState('{"Calculus & Rates": 35, "Surface Integrals": 35, "Differential Equations": 30}');
+  const [unitWeights, setUnitWeights] = useState('{"Unit 1 - Core Concepts": 35, "Unit 2 - Analytical Problems": 35, "Unit 3 - Advanced Theory": 30}');
   const [includeDiagrams, setIncludeDiagrams] = useState(true);
   const [overrideModel, setOverrideModel] = useState("");
   const [overrideApiKey, setOverrideApiKey] = useState("");
   const [generating, setGenerating] = useState(false);
   const [genStatus, setGenStatus] = useState<string | null>(null);
+  const [blueprintConfig, setBlueprintConfig] = useState<Record<string, unknown> | null>(null);
 
   // Workspace / Questions State
   const [currentExam, setCurrentExam] = useState<ExamItem | null>(null);
@@ -101,120 +130,41 @@ export default function ExamPage() {
   const [pastExams, setPastExams] = useState<ExamItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // Initial Load
+  // Load existing context and exam history on page load.
   useEffect(() => {
     fetchContextStats();
     fetchPastExams();
-  }, []);
+  }, [instituteId]);
 
-  // ── API: Context Stats ──────────────────────────────────────────────────
   const fetchContextStats = async () => {
     setContextLoading(true);
     try {
-      const res = await safeFetchJson<ContextStats>(`${apiBaseUrl}/api/context/stats`);
+      const res = await safeFetchJson<ContextStats>(
+        `${apiBaseUrl}/api/context/stats?institute_id=${encodeURIComponent(instituteId)}`
+      );
       if (res.ok && res.data) {
         setContextStats(res.data);
       }
-    } catch (e) {
-      console.error("Error fetching context stats:", e);
+
+      const subjRes = await safeFetchJson<
+        Array<{ subject: string; chunks_count: number; documents_count: number }>
+      >(
+        `${apiBaseUrl}/api/institute/subjects?institute_id=${encodeURIComponent(instituteId)}`
+      );
+      if (subjRes.ok && Array.isArray(subjRes.data) && subjRes.data.length > 0) {
+        setInstituteSubjects(subjRes.data);
+        setSelectedSubject(subjRes.data[0].subject);
+        setExamTitle(`${subjRes.data[0].subject} Examination`);
+      }
+
+      const configRes = await safeFetchJson<{ config: Record<string, unknown> }>(
+        `${apiBaseUrl}/api/institute/config?institute_id=${encodeURIComponent(instituteId)}`
+      );
+      if (configRes.ok && configRes.data?.config) setBlueprintConfig(configRes.data.config);
+    } catch (error) {
+      console.error("Error fetching context stats:", error);
     } finally {
       setContextLoading(false);
-    }
-  };
-
-  // ── API: Load Sample Calculus Context ──────────────────────────────────
-  const handleLoadSampleContext = async () => {
-    setContextLoading(true);
-    setUploadStatus({ message: "Loading pre-configured Calculus dataset...", type: "info" });
-    try {
-      // 1. Fetch sample JSON
-      const sampleRes = await safeFetchJson(`${apiBaseUrl}/sample_context.json`);
-      if (!sampleRes.ok || !sampleRes.data) {
-        throw new Error("Could not fetch sample context dataset.");
-      }
-      const sampleData = sampleRes.data;
-
-      // 2. Upload to context endpoint
-      const blob = new Blob([JSON.stringify(sampleData, null, 2)], { type: "application/json" });
-      const file = new File([blob], "Calculus_Differential_Equations_Sample.json", { type: "application/json" });
-
-      const formData = new FormData();
-      formData.append("files", file);
-
-      const uploadRes = await safeFetchJson(`${apiBaseUrl}/api/context/upload`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!uploadRes.ok) {
-        throw new Error(uploadRes.error || "Failed to index sample dataset.");
-      }
-
-      setUploadStatus({
-        message: `Successfully loaded sample dataset! Indexed ${uploadRes.data?.count || "multiple"} semantic units.`,
-        type: "success",
-      });
-      await fetchContextStats();
-    } catch (err: any) {
-      setUploadStatus({ message: err.message || "Failed to load sample dataset.", type: "error" });
-    } finally {
-      setContextLoading(false);
-    }
-  };
-
-  // ── API: Upload Custom JSON Files ──────────────────────────────────────
-  const handleFileUpload = async () => {
-    if (selectedFiles.length === 0) return;
-
-    setContextLoading(true);
-    setUploadStatus({ message: `Uploading & chunking ${selectedFiles.length} file(s)...`, type: "info" });
-
-    try {
-      const formData = new FormData();
-      for (const f of selectedFiles) {
-        formData.append("files", f);
-      }
-
-      const res = await safeFetchJson(`${apiBaseUrl}/api/context/upload`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        throw new Error(res.error || "Failed to upload context files.");
-      }
-
-      setUploadStatus({
-        message: `Success! ${res.data?.message || `Indexed ${res.data?.count} items.`}`,
-        type: "success",
-      });
-      setSelectedFiles([]);
-      await fetchContextStats();
-    } catch (err: any) {
-      setUploadStatus({ message: err.message || "Error uploading files.", type: "error" });
-    } finally {
-      setContextLoading(false);
-    }
-  };
-
-  // ── Drag & Drop Handlers ────────────────────────────────────────────────
-  const handleFileDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const jsonFiles = Array.from(e.dataTransfer.files).filter((f) => f.name.endsWith(".json") || f.type.includes("json"));
-      if (jsonFiles.length > 0) {
-        setSelectedFiles((prev) => [...prev, ...jsonFiles]);
-      } else {
-        setUploadStatus({ message: "Please drop valid .json files.", type: "error" });
-      }
-    }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const jsonFiles = Array.from(e.target.files).filter((f) => f.name.endsWith(".json") || f.type.includes("json"));
-      setSelectedFiles((prev) => [...prev, ...jsonFiles]);
     }
   };
 
@@ -224,15 +174,19 @@ export default function ExamPage() {
     if (!examTitle.trim()) return;
 
     setGenerating(true);
-    setGenStatus(`Retrieving FAISS semantic context & synthesizing ${nQuestions} questions with AI (this may take 15–45 seconds)...`);
+    setGenStatus(`Aligning syllabus for '${selectedSubject}' and authoring examination paper (this may take 15–30 seconds)...`);
 
     try {
       const formData = new FormData();
       formData.append("title", examTitle.trim());
+      formData.append("subject", selectedSubject);
+      formData.append("institute_id", instituteId);
+      formData.append("syllabus_set", selectedSyllabusSet);
       formData.append("n_questions", nQuestions.toString());
       formData.append("max_marks", maxMarks.toString());
       if (unitWeights.trim()) formData.append("per_unit_weights", unitWeights.trim());
       formData.append("include_diagrams", includeDiagrams ? "true" : "false");
+      if (blueprintConfig) formData.append("blueprint_config", JSON.stringify(blueprintConfig));
       if (overrideModel.trim()) formData.append("model", overrideModel.trim());
       if (overrideApiKey.trim()) formData.append("api_key", overrideApiKey.trim());
 
@@ -448,59 +402,50 @@ export default function ExamPage() {
   return (
     <div className="space-y-6 pb-12">
       {/* ── Top Header ─────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-slate-900 pb-5">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-2xl font-black text-gray-900 tracking-tight">ExamGen Studio</span>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700 uppercase tracking-wider">
+            <span className="text-2xl font-black text-slate-950 tracking-tight">ExamGen Studio</span>
+            <span className="px-2.5 py-0.5 rounded-none text-[10px] font-bold bg-blue-100 text-blue-700 uppercase tracking-wider">
               Autonomous AI
             </span>
           </div>
           <p className="text-sm text-gray-500 mt-1">
-            FAISS dense context indexing · Single-pass Matplotlib plotting · Multi-format (.pptx, .pdf, .docx, .tex) publication
+            Curriculum-grounded question authoring · Publication-ready technical diagrams · Multi-format (.pdf, .docx, .pptx, .tex) exports
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* FAISS Index status pill */}
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-xl shadow-2xs text-xs font-semibold text-gray-700">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          {/* Course Repository status pill */}
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-white border-2 border-slate-900 rounded-none shadow-[3px_3px_0_0_#0f172a] text-xs font-semibold text-slate-800">
+            <span className="w-2 h-2 rounded-none bg-emerald-500 animate-pulse" />
             <span>
-              FAISS Index:{" "}
-              <strong className="text-indigo-600">
-                {contextStats ? `${contextStats.total_items} Chunks` : "Ready"}
+              Course Materials:{" "}
+              <strong className="text-blue-600">
+                {contextStats ? `${contextStats.total_items} Topics Indexed` : "Synchronized"}
               </strong>
             </span>
           </div>
 
-          <button
-            onClick={handleLoadSampleContext}
-            disabled={contextLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all border border-indigo-200"
-            title="Load sample Calculus dataset into FAISS"
-          >
-            <Zap className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Load Sample Data</span>
-          </button>
         </div>
       </div>
 
       {/* ── Main Navigation Bar ────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 pb-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-slate-900 pb-2">
         {/* Tab Selector */}
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+        <div className="flex gap-1 bg-slate-100 p-1 border-2 border-slate-900 rounded-none shadow-[3px_3px_0_0_#0f172a]">
           {[
             { key: "workflow", label: "⚡ Exam Workflow Studio" },
             { key: "history", label: `📋 Exam Archive (${pastExams.length})` },
-            { key: "pipeline", label: "🔧 Architecture & Pipeline" },
+            { key: "pipeline", label: "💡 How It Works" },
           ].map(({ key, label }) => (
             <button
               key={key}
               onClick={() => setActiveTab(key as any)}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              className={`px-4 py-2 rounded-none text-xs font-bold transition-all ${
                 activeTab === key
-                  ? "bg-white text-indigo-600 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
+                  ? "bg-blue-600 text-white border-2 border-slate-900 shadow-[2px_2px_0_0_#0f172a]"
+                  : "text-slate-700 hover:bg-blue-50 hover:text-blue-800"
               }`}
             >
               {label}
@@ -510,9 +455,9 @@ export default function ExamPage() {
 
         {/* Workflow Stepper Navigation (visible when activeTab === 'workflow') */}
         {activeTab === "workflow" && (
-          <div className="flex items-center gap-1 bg-white border border-gray-200 p-1 rounded-xl shadow-2xs">
+          <div className="flex items-center gap-1 bg-white border-2 border-slate-900 p-1 rounded-none shadow-[3px_3px_0_0_#0f172a]">
             {[
-              { step: 1, label: "1. Ingestion" },
+              { step: 1, label: "1. Exam Setup" },
               { step: 2, label: "2. Blueprint" },
               { step: 3, label: "3. Studio" },
               { step: 4, label: "4. Export" },
@@ -520,10 +465,10 @@ export default function ExamPage() {
               <button
                 key={step}
                 onClick={() => setActiveStep(step)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`px-3 py-1.5 rounded-none text-xs font-semibold transition-all ${
                   activeStep === step
-                    ? "bg-indigo-600 text-white shadow-2xs"
-                    : "text-gray-600 hover:bg-gray-100"
+                    ? "bg-blue-600 text-white border-2 border-slate-900 shadow-[2px_2px_0_0_#0f172a]"
+                    : "text-slate-700 hover:bg-blue-50"
                 }`}
               >
                 {label}
@@ -538,169 +483,175 @@ export default function ExamPage() {
       {/* ───────────────────────────────────────────────────────────────── */}
       {activeTab === "workflow" && (
         <div>
-          {/* STEP 1: CONTEXT INGESTION */}
+          {/* STEP 1: EXAM SETUP */}
           {activeStep === 1 && (
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-              {/* Left 3 cols: Upload & Dropzone */}
-              <div className="lg:col-span-3 bg-white rounded-2xl border border-gray-200 p-6 space-y-5 shadow-2xs">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 uppercase">
-                      Knowledge Base
-                    </span>
-                    <h3 className="text-lg font-bold text-gray-900 mt-1">Course Context & Syllabus Ingestion</h3>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Upload course objectives, textbook topics, and question banks in JSON to index into FAISS dense vector store.
-                    </p>
-                  </div>
+              {/* Left 3 cols: Subject & Syllabus Selection */}
+              <div className="lg:col-span-3 bg-white rounded-none border-2 border-slate-900 p-6 space-y-6 shadow-[4px_4px_0_0_#0f172a]">
+                <div>
+                  <span className="px-2.5 py-0.5 rounded-none text-[10px] font-bold bg-blue-100 text-blue-700 uppercase">
+                    Exam Setup
+                  </span>
+                  <h3 className="text-lg font-bold text-gray-900 mt-1">Select Subject & Syllabus</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Choose the subject and specific syllabus set to use for this examination.
+                  </p>
                 </div>
 
-                {/* Dropzone */}
-                <div
-                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={handleFileDrop}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-3 ${
-                    isDragging
-                      ? "border-indigo-500 bg-indigo-50/50"
-                      : "border-gray-300 hover:border-indigo-400 hover:bg-gray-50/60 bg-gray-50/30"
-                  }`}
-                >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept=".json,application/json"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-2xs">
-                    <Upload className="w-6 h-6" />
-                  </div>
+                <div className="space-y-4">
                   <div>
-                    <p className="text-sm font-bold text-gray-800">
-                      Drop JSON course syllabi or click to browse
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">Supports Universal JSON schemas, problem sets, and unit outcomes</p>
-                  </div>
-                </div>
-
-                {/* Selected files preview */}
-                {selectedFiles.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs font-semibold text-gray-700">
-                      <span>Selected Files ({selectedFiles.length})</span>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedFiles([])}
-                        className="text-red-500 hover:underline"
-                      >
-                        Clear all
-                      </button>
-                    </div>
-                    <div className="max-h-32 overflow-y-auto space-y-1.5">
-                      {selectedFiles.map((f, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-xl text-xs border border-gray-200"
-                        >
-                          <span className="font-medium text-gray-800 truncate">{f.name}</span>
-                          <span className="text-gray-400 ml-2">{(f.size / 1024).toFixed(1)} KB</span>
-                        </div>
-                      ))}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleFileUpload}
-                      disabled={contextLoading}
-                      className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2"
-                    >
-                      {contextLoading ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          <span>Chunking & Vectorizing into FAISS...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>Upload & Index {selectedFiles.length} File(s)</span>
-                        </>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1.5 flex items-center justify-between">
+                      <span>Subject <span className="text-red-500">*</span></span>
+                      {instituteSubjects.length > 0 && (
+                        <span className="text-[10px] text-[#2563EB] font-mono">
+                          {instituteSubjects.length} subjects in Course Vault
+                        </span>
                       )}
-                    </button>
-                  </div>
-                )}
+                    </label>
+                    <select
+                      value={selectedSubject}
+                      onChange={(e) => {
+                        setSelectedSubject(e.target.value);
+                        setExamTitle(`${e.target.value} Examination`);
+                      }}
+                      className="w-full px-4 py-3 border-2 border-slate-900 rounded-none text-sm font-semibold bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                    >
+                      {/* 1. Group by Institute Course Vault Uploads */}
+                      {instituteSubjects.length > 0 && (
+                        <optgroup label="📚 Institute Course Vault">
+                          {instituteSubjects.map((s) => (
+                            <option key={`inst-${s.subject}`} value={s.subject}>
+                              {s.subject} ({s.chunks_count} units, {s.documents_count} docs)
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
 
-                {/* Upload Status Toast */}
-                {uploadStatus && (
-                  <div
-                    className={`p-3.5 rounded-xl text-xs flex items-start gap-2.5 ${
-                      uploadStatus.type === "success"
-                        ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                        : uploadStatus.type === "error"
-                        ? "bg-red-50 text-red-800 border border-red-200"
-                        : "bg-blue-50 text-blue-800 border border-blue-200"
-                    }`}
-                  >
-                    {uploadStatus.type === "success" ? (
-                      <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600 mt-0.5" />
-                    ) : uploadStatus.type === "error" ? (
-                      <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-600 mt-0.5" />
-                    ) : (
-                      <RefreshCw className="w-4 h-4 flex-shrink-0 text-blue-600 animate-spin mt-0.5" />
-                    )}
-                    <span className="flex-1 font-medium">{uploadStatus.message}</span>
+                      {/* 2. Standard Academic Subjects */}
+                      <optgroup label="🎓 Standard Curriculum Disciplines">
+                        {FALLBACK_SUBJECTS.filter(
+                          (fs) => !instituteSubjects.some((is) => is.subject.toLowerCase() === fs.toLowerCase())
+                        ).map((subject) => (
+                          <option key={`std-${subject}`} value={subject}>
+                            {subject}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </select>
                   </div>
-                )}
 
-                <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                  <button
-                    type="button"
-                    onClick={handleLoadSampleContext}
-                    disabled={contextLoading}
-                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
-                  >
-                    <Zap className="w-3.5 h-3.5" />
-                    Load Pre-configured Calculus Dataset
-                  </button>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+                      Syllabus Set <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={selectedSyllabusSet}
+                      onChange={(e) => setSelectedSyllabusSet(e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-900 rounded-none text-sm font-semibold bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                    >
+                      {SYLLABUS_SETS.map((syllabus) => (
+                        <option key={syllabus} value={syllabus}>{syllabus}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Grounded Curriculum Context Indicator */}
+                {(() => {
+                  const match = instituteSubjects.find(
+                    (s) => s.subject.toLowerCase() === selectedSubject.toLowerCase()
+                  );
+                  const count = match ? match.chunks_count : 0;
+                  const docsNum = match ? match.documents_count : 0;
+
+                  return (
+                    <div
+                      className={`p-4 border-2 rounded-none space-y-2 transition-all ${
+                        count > 0
+                          ? "bg-[#DCFCE7] border-[#15803D] text-[#15803D] shadow-[3px_3px_0_#15803D]"
+                          : "bg-[#EFF6FF] border-[#2563EB] text-[#1E40AF]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold flex items-center gap-1.5">
+                          {count > 0 ? (
+                            <>
+                              <CheckCircle2 className="w-4 h-4 text-[#15803D]" />
+                              Institute Syllabus Grounding Active
+                            </>
+                          ) : (
+                            <>
+                              <BookOpen className="w-4 h-4 text-[#2563EB]" />
+                              Standard Academic Curriculum
+                            </>
+                          )}
+                        </span>
+                        <span className="text-[11px] font-mono font-bold">
+                          {count > 0 ? `${count} Curriculum Units` : "Standard Coursework"}
+                        </span>
+                      </div>
+
+                      <p className="text-xs leading-relaxed opacity-90">
+                        {count > 0 ? (
+                          <>
+                            Found <strong>{count} curriculum units</strong> across <strong>{docsNum} uploaded document(s)</strong>. Examination questions will strictly cite and test topics from this course material.
+                          </>
+                        ) : (
+                          <>
+                            No documents uploaded yet for <em>&ldquo;{selectedSubject}&rdquo;</em>. Questions will generate from academic domain knowledge. You can upload course materials in the <strong>Course Documents Hub</strong> for tailored results.
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                <div className="flex items-center justify-end pt-2 border-t-2 border-slate-900">
                   <button
                     type="button"
                     onClick={() => setActiveStep(2)}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
+                    disabled={!selectedSubject || !selectedSyllabusSet}
+                    className="flex items-center gap-1.5 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-none text-xs font-bold shadow-[3px_3px_0_0_#0f172a] transition-all neo-btn"
                   >
-                    <span>Proceed to Blueprint</span>
+                    <span>Continue to Blueprint</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
 
-              {/* Right 2 cols: FAISS Knowledge Base Stats */}
+              {/* Right 2 cols: Existing Context Status */}
               <div className="lg:col-span-2 space-y-4">
-                {/* Stats Card */}
-                <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3 shadow-2xs">
+                <div className="bg-white rounded-none border-2 border-slate-900 p-5 space-y-4 shadow-[4px_4px_0_0_#0f172a]">
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400">
-                      FAISS Dense Index
+                      Context Library
                     </h4>
-                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-[11px] font-bold">
+                    <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-none text-[11px] font-bold">
                       {contextStats ? `${contextStats.total_items} Items Indexed` : "Loading..."}
                     </span>
                   </div>
-
-                  {/* Subject Chips */}
                   <div>
-                    <span className="text-[11px] font-semibold text-gray-500 block mb-1.5">Subject Breakdown:</span>
+                    <span className="text-[11px] font-semibold text-gray-500 block mb-1.5">Available Subjects:</span>
                     <div className="flex flex-wrap gap-1.5">
                       {contextStats && Object.keys(contextStats.subject_breakdown).length > 0 ? (
                         Object.entries(contextStats.subject_breakdown).map(([subject, count]) => (
-                          <span
+                          <button
+                            type="button"
                             key={subject}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 text-gray-800 border border-gray-200"
+                            onClick={() => {
+                              setSelectedSubject(subject);
+                              setExamTitle(subject);
+                            }}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-none text-xs font-semibold border transition-colors ${
+                              selectedSubject === subject
+                                ? "bg-blue-50 text-blue-700 border-slate-900"
+                                : "bg-slate-100 text-gray-800 border-gray-200 hover:border-blue-600"
+                            }`}
                           >
-                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                            <span className={`w-1.5 h-1.5 rounded-none ${selectedSubject === subject ? "bg-blue-500" : "bg-gray-400"}`} />
                             <span>{subject}</span>
-                            <strong className="text-indigo-600">({count})</strong>
-                          </span>
+                            <strong className="text-blue-600">({count})</strong>
+                          </button>
                         ))
                       ) : (
                         <p className="text-xs text-gray-400 italic">No indexed items yet.</p>
@@ -709,31 +660,14 @@ export default function ExamPage() {
                   </div>
                 </div>
 
-                {/* Recent Items Preview */}
-                <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3 shadow-2xs">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400">
-                    Recently Indexed Knowledge
-                  </h4>
-                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                    {contextStats && contextStats.recent_items.length > 0 ? (
-                      contextStats.recent_items.map((item) => (
-                        <div
-                          key={item.id}
-                          className="p-2.5 rounded-xl bg-gray-50 border border-gray-200 text-xs space-y-1"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-indigo-700">{item.subject}</span>
-                            <span className="text-[10px] text-gray-400 uppercase">{item.type}</span>
-                          </div>
-                          <p className="text-gray-600 text-[11px] line-clamp-2 leading-relaxed">
-                            {item.content}
-                          </p>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-xs text-gray-400 italic">No recent items to display.</p>
-                    )}
+                <div className="bg-blue-50 border border-slate-900 rounded-none p-5 space-y-2">
+                  <div className="flex items-center gap-2 text-blue-800">
+                    <BookOpen className="w-4 h-4" />
+                    <h4 className="text-sm font-bold">Context is already available</h4>
                   </div>
+                  <p className="text-xs text-blue-700 leading-relaxed">
+                    Context documents are uploaded and processed from the Context Documents page. Exam Generation uses the indexed knowledge when generating questions.
+                  </p>
                 </div>
               </div>
             </div>
@@ -743,9 +677,9 @@ export default function ExamPage() {
           {activeStep === 2 && (
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
               {/* Left 3 cols: Form */}
-              <div className="lg:col-span-3 bg-white rounded-2xl border border-gray-200 p-6 space-y-5 shadow-2xs">
+              <div className="lg:col-span-3 bg-white rounded-none border-2 border-slate-900 p-6 space-y-5 shadow-[4px_4px_0_0_#0f172a]">
                 <div>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700 uppercase">
+                  <span className="px-2.5 py-0.5 rounded-none text-[10px] font-bold bg-blue-100 text-blue-700 uppercase">
                     Exam Configuration
                   </span>
                   <h3 className="text-lg font-bold text-gray-900 mt-1">Examination Blueprint</h3>
@@ -765,7 +699,7 @@ export default function ExamPage() {
                       value={examTitle}
                       onChange={(e) => setExamTitle(e.target.value)}
                       placeholder="e.g. Advanced Calculus & Differential Equations"
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-semibold"
+                      className="w-full px-4 py-2.5 border-2 border-slate-900 rounded-none text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-semibold"
                       required
                     />
                   </div>
@@ -782,7 +716,7 @@ export default function ExamPage() {
                         max={25}
                         value={nQuestions}
                         onChange={(e) => setNQuestions(parseInt(e.target.value) || 1)}
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 font-semibold"
+                        className="w-full px-4 py-2.5 border-2 border-slate-900 rounded-none text-sm focus:outline-none focus:border-blue-500 font-semibold"
                         required
                       />
                     </div>
@@ -796,7 +730,7 @@ export default function ExamPage() {
                         max={500}
                         value={maxMarks}
                         onChange={(e) => setMaxMarks(parseInt(e.target.value) || 10)}
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 font-semibold"
+                        className="w-full px-4 py-2.5 border-2 border-slate-900 rounded-none text-sm focus:outline-none focus:border-blue-500 font-semibold"
                         required
                       />
                     </div>
@@ -812,91 +746,118 @@ export default function ExamPage() {
                       value={unitWeights}
                       onChange={(e) => setUnitWeights(e.target.value)}
                       placeholder='{"Calculus & Rates": 35, "Surface Integrals": 35, "Differential Equations": 30}'
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-xs font-mono focus:outline-none focus:border-indigo-500"
+                      className="w-full px-4 py-2.5 border-2 border-slate-900 rounded-none text-xs font-mono focus:outline-none focus:border-blue-500"
                     />
                   </div>
 
                   {/* Checkbox: Diagrams */}
-                  <div className="p-3.5 bg-indigo-50/60 rounded-xl border border-indigo-100 flex items-start gap-3">
+                  <div className="p-3.5 bg-blue-50 rounded-none border border-slate-900 flex items-start gap-3">
                     <input
                       type="checkbox"
                       id="includeDiagramsCheckbox"
                       checked={includeDiagrams}
                       onChange={(e) => setIncludeDiagrams(e.target.checked)}
-                      className="w-4 h-4 mt-0.5 accent-indigo-600"
+                      className="w-4 h-4 mt-0.5 accent-blue-600"
                     />
                     <label htmlFor="includeDiagramsCheckbox" className="text-xs text-gray-700 cursor-pointer">
-                      <strong className="text-gray-900 block font-semibold">Generate Matplotlib Scientific Diagrams & Visuals</strong>
-                      AI automatically generates executable Python Matplotlib code for 3D surfaces, 2D vector fields, and waveforms.
+                      <strong className="text-gray-900 block font-semibold">Generate Technical Diagrams & Visuals</strong>
+                      Automatically generates accurate 3D geometry, 2D plots, physics waveforms, and technical figures for questions that require them.
                     </label>
                   </div>
 
                   {/* Collapsible Overrides */}
-                  <details className="group border border-gray-200 rounded-xl p-3 text-xs">
+                  <details className="group border-2 border-slate-900 rounded-none p-3 text-xs">
                     <summary className="font-bold text-gray-700 cursor-pointer flex items-center justify-between">
-                      <span>⚙️ Advanced OpenRouter Model & API Overrides (Optional)</span>
+                      <span>⚙️ Advanced AI Model & Provider Preferences (Optional)</span>
                       <ChevronRight className="w-4 h-4 group-open:rotate-90 transition-transform text-gray-400" />
                     </summary>
-                    <div className="mt-3 space-y-3 pt-3 border-t border-gray-100">
+                    <div className="mt-3 space-y-3 pt-3 border-t-2 border-slate-900">
                       <div>
-                        <label className="block text-[11px] font-medium text-gray-500 mb-1">
-                          Model Identifier Override
+                        <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                          Select AI Model
                         </label>
-                        <input
-                          type="text"
+                        <select
                           value={overrideModel}
                           onChange={(e) => setOverrideModel(e.target.value)}
-                          placeholder="liquid/lfm-2.5-2.6b:free (or deepseek/deepseek-chat)"
-                          className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs"
-                        />
+                          className="w-full px-3 py-2 border-2 border-slate-900 rounded-none text-xs font-semibold bg-white"
+                        >
+                          <option value="">Default: DeepSeek Chat (Recommended & Verified)</option>
+                          <option value="deepseek/deepseek-chat">DeepSeek Chat (High Speed & Rigorous Math)</option>
+                          <option value="nvidia/nemotron-3-nano-30b-a3b:free">NVIDIA Nemotron 3 Nano (Free Tier)</option>
+                          <option value="nvidia/nemotron-3-super-120b-a12b:free">NVIDIA Nemotron 3 Super 120B (Free Tier)</option>
+                          <option value="google/gemma-4-31b-it:free">Google Gemma 4 31B (Free Tier)</option>
+                        </select>
                       </div>
                       <div>
-                        <label className="block text-[11px] font-medium text-gray-500 mb-1">
-                          OpenRouter API Key Override
+                        <label className="block text-[11px] font-bold text-gray-600 mb-1 flex items-center justify-between">
+                          <span>Custom AI Provider Key (Optional)</span>
+                          <span className="text-[10px] text-green-700 font-normal">🟢 System Key Active in Backend</span>
                         </label>
                         <input
                           type="password"
                           value={overrideApiKey}
-                          onChange={(e) => setOverrideApiKey(e.target.value)}
-                          placeholder="sk-or-v1-..."
-                          className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs"
+                          onChange={(e) => setOverrideApiKey(e.target.value.trim())}
+                          placeholder="Leave empty to use built-in system key, or paste sk-or-v1-..."
+                          className="w-full px-3 py-1.5 border-2 border-slate-900 rounded-none text-xs"
                         />
+                        <p className="text-[10px] text-gray-500 mt-1">
+                          Leave this field blank to automatically use the pre-configured system key.
+                        </p>
                       </div>
                     </div>
                   </details>
 
                   {/* Status Banner */}
                   {genStatus && (
-                    <div className="p-3.5 bg-indigo-50 border border-indigo-200 rounded-xl flex items-start gap-2.5 text-xs text-indigo-900">
-                      <RefreshCw className="w-4 h-4 animate-spin text-indigo-600 mt-0.5 flex-shrink-0" />
-                      <span className="font-medium">{genStatus}</span>
+                    <div
+                      className={`p-3.5 border border-slate-900 rounded-none flex items-start gap-2.5 text-xs ${
+                        genStatus.toLowerCase().includes("error")
+                          ? "bg-red-50 text-red-900 border-red-800"
+                          : "bg-blue-50 text-blue-900"
+                      }`}
+                    >
+                      {genStatus.toLowerCase().includes("error") ? (
+                        <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4 animate-spin text-blue-600 mt-0.5 flex-shrink-0" />
+                      )}
+                      <div className="flex-1">
+                        <span className="font-bold block mb-1">
+                          {genStatus.toLowerCase().includes("error") ? "Generation Error" : "Processing"}
+                        </span>
+                        <span className="font-medium whitespace-pre-wrap">{genStatus}</span>
+                        {genStatus.includes("401") && (
+                          <div className="mt-2 pt-2 border-t border-red-200 text-[11px] text-red-800">
+                            💡 <strong>Fix:</strong> Your AI provider key is invalid or expired (<code>401: User not found</code>). Please expand the <strong>&ldquo;Advanced AI Model & Provider Preferences&rdquo;</strong> section above and paste a valid OpenRouter API Key (<code>sk-or-v1-...</code>).
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
                   {/* Actions */}
-                  <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                  <div className="flex items-center justify-between pt-2 border-t-2 border-slate-900">
                     <button
                       type="button"
                       onClick={() => setActiveStep(1)}
-                      className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+                      className="px-4 py-2 border-2 border-slate-900 rounded-none text-xs font-bold hover:bg-slate-50 transition-colors"
                     >
-                      ← Back to Context
+                      Back: Unit Weights
                     </button>
-
                     <button
                       type="submit"
                       disabled={generating || !examTitle.trim()}
-                      className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-sm font-bold shadow-md shadow-indigo-200 transition-all"
+                      className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-none text-xs font-bold shadow-[4px_4px_0_0_#0f172a] disabled:opacity-50 flex items-center gap-2 transition-colors"
                     >
                       {generating ? (
                         <>
                           <RefreshCw className="w-4 h-4 animate-spin" />
-                          <span>Generating Exam with AI...</span>
+                          Authoring Exam...
                         </>
                       ) : (
                         <>
-                          <Zap className="w-4 h-4" />
-                          <span>Generate Examination with AI</span>
+                          <Sparkles className="w-4 h-4" />
+                          Generate Examination
                         </>
                       )}
                     </button>
@@ -906,25 +867,25 @@ export default function ExamPage() {
 
               {/* Right 2 cols: Info & Blueprint Card */}
               <div className="lg:col-span-2 space-y-4">
-                <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3.5 shadow-2xs">
+                <div className="bg-white rounded-none border-2 border-slate-900 p-5 space-y-3.5 shadow-[4px_4px_0_0_#0f172a]">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400">
                     AI Exam Pipeline Guarantee
                   </h4>
                   <div className="space-y-3 text-xs text-gray-600">
                     <div className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-md bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
+                      <div className="w-5 h-5 rounded-none bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
                         1
                       </div>
-                      <p><strong>FAISS Retrieval:</strong> Automatically fetches indexed textbook theorems, learning targets, and formulas.</p>
+                      <p><strong>Syllabus Alignment:</strong> Automatically references your course textbooks, learning targets, and formulas.</p>
                     </div>
                     <div className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-md bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
+                      <div className="w-5 h-5 rounded-none bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
                         2
                       </div>
                       <p><strong>Strict Mark Summing:</strong> Guaranteed {maxMarks} total marks distributed accurately across {nQuestions} questions.</p>
                     </div>
                     <div className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-md bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
+                      <div className="w-5 h-5 rounded-none bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
                         3
                       </div>
                       <p><strong>Single-Pass Visual Engine:</strong> Scientific plots are rendered in milliseconds via local Python/Matplotlib sandbox.</p>
@@ -932,8 +893,8 @@ export default function ExamPage() {
                   </div>
                 </div>
 
-                <div className="p-4 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl text-white space-y-2 shadow-sm">
-                  <p className="text-xs font-bold text-indigo-100">💡 Tip for Institute Faculty</p>
+                <div className="p-4 bg-blue-500 rounded-none text-white space-y-2 shadow-[3px_3px_0_0_#0f172a]">
+                  <p className="text-xs font-bold text-blue-100">💡 Tip for Institute Faculty</p>
                   <p className="text-[11px] leading-relaxed text-white/90">
                     Once generated, questions can be individually refined using secondary teacher AI, reordered, edited inline with full KaTeX math support, and published to PowerPoint, PDF, Word, and LaTeX.
                   </p>
@@ -946,13 +907,13 @@ export default function ExamPage() {
           {activeStep === 3 && (
             <div className="space-y-5">
               {/* Workspace Topbar */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
+              <div className="bg-white rounded-none border-2 border-slate-900 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-[4px_4px_0_0_#0f172a]">
                 <div>
                   <div className="flex items-center gap-2.5">
                     <h3 className="text-lg font-bold text-gray-900 truncate">
                       {currentExam ? currentExam.title : "Exam Paper Workspace"}
                     </h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-700">
+                    <span className="px-2.5 py-0.5 rounded-none text-xs font-bold bg-blue-100 text-blue-700">
                       {questions.reduce((sum, q) => sum + (q.marks || 0), 0)} / {currentExam?.max_marks || maxMarks} Marks
                     </span>
                   </div>
@@ -965,7 +926,7 @@ export default function ExamPage() {
                   <button
                     type="button"
                     onClick={handleAddNewQuestion}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl text-xs font-bold transition-all"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-gray-200 text-gray-800 rounded-none text-xs font-bold transition-all"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Question</span>
@@ -974,7 +935,7 @@ export default function ExamPage() {
                   <button
                     type="button"
                     onClick={() => setActiveStep(4)}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
+                    className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-none text-xs font-bold shadow-[3px_3px_0_0_#0f172a] transition-all"
                   >
                     <span>Proceed to Export</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -984,8 +945,8 @@ export default function ExamPage() {
 
               {/* Questions List or Empty State */}
               {questions.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-dashed border-gray-300 p-12 text-center space-y-3">
-                  <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 mx-auto shadow-2xs">
+                <div className="bg-white rounded-none border border-dashed border-slate-900 p-12 text-center space-y-3">
+                  <div className="w-14 h-14 bg-blue-50 rounded-none flex items-center justify-center text-blue-600 mx-auto shadow-[4px_4px_0_0_#0f172a]">
                     <FileText className="w-7 h-7" />
                   </div>
                   <h4 className="text-base font-bold text-gray-900">No Exam Loaded in Workspace</h4>
@@ -994,7 +955,7 @@ export default function ExamPage() {
                   </p>
                   <button
                     onClick={() => setActiveStep(2)}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-none text-xs font-bold shadow-[3px_3px_0_0_#0f172a] transition-all"
                   >
                     Go to Step 2: Blueprint
                   </button>
@@ -1007,16 +968,16 @@ export default function ExamPage() {
                     return (
                       <div
                         key={q.id}
-                        className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-2xs hover:border-indigo-200 transition-all"
+                        className="bg-white rounded-none border-2 border-slate-900 overflow-hidden shadow-[4px_4px_0_0_#0f172a] hover:border-blue-600 transition-all"
                       >
                         {/* Question Header */}
-                        <div className="px-5 py-3 bg-gray-50/80 border-b border-gray-100 flex items-center justify-between">
+                        <div className="px-5 py-3 bg-blue-50 border-b-2 border-slate-900 flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <span className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-2xs">
+                            <span className="w-7 h-7 rounded-none bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-[4px_4px_0_0_#0f172a]">
                               Q{idx + 1}
                             </span>
                             <span className="text-xs font-bold text-gray-700">Question #{idx + 1}</span>
-                            <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                            <span className="px-2 py-0.5 rounded-none text-[11px] font-bold bg-blue-50 text-blue-700 border border-slate-900">
                               {q.marks} Marks
                             </span>
                           </div>
@@ -1028,7 +989,7 @@ export default function ExamPage() {
                               type="button"
                               onClick={() => moveQuestion(idx, "up")}
                               disabled={idx === 0}
-                              className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-200/60 rounded-lg disabled:opacity-30 transition-colors"
+                              className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-200/60 rounded-none disabled:opacity-30 transition-colors"
                               title="Move Up"
                             >
                               <ArrowUp className="w-3.5 h-3.5" />
@@ -1037,7 +998,7 @@ export default function ExamPage() {
                               type="button"
                               onClick={() => moveQuestion(idx, "down")}
                               disabled={idx === questions.length - 1}
-                              className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-200/60 rounded-lg disabled:opacity-30 transition-colors"
+                              className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-200/60 rounded-none disabled:opacity-30 transition-colors"
                               title="Move Down"
                             >
                               <ArrowDown className="w-3.5 h-3.5" />
@@ -1050,7 +1011,7 @@ export default function ExamPage() {
                               <button
                                 type="button"
                                 onClick={() => startInlineEdit(q)}
-                                className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-200/60 rounded-lg transition-colors"
+                                className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-200/60 rounded-none transition-colors"
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
                                 <span>Edit</span>
@@ -1061,7 +1022,7 @@ export default function ExamPage() {
                             <button
                               type="button"
                               onClick={() => setAiModalQuestion(q)}
-                              className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                              className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-none transition-colors"
                             >
                               <Sparkles className="w-3.5 h-3.5" />
                               <span>AI Refine</span>
@@ -1071,7 +1032,7 @@ export default function ExamPage() {
                             <button
                               type="button"
                               onClick={() => setPlotStudioQuestion(q)}
-                              className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-none transition-colors"
                             >
                               <ImageIcon className="w-3.5 h-3.5" />
                               <span>{q.image_path ? "Edit Diagram" : "Add Diagram"}</span>
@@ -1083,7 +1044,7 @@ export default function ExamPage() {
                             <button
                               type="button"
                               onClick={() => handleDeleteQuestion(q.id)}
-                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-none transition-colors"
                               title="Delete Question"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1104,7 +1065,7 @@ export default function ExamPage() {
                                     rows={4}
                                     value={editText}
                                     onChange={(e) => setEditText(e.target.value)}
-                                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-xs font-mono focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3.5 py-2.5 border-2 border-slate-900 rounded-none text-xs font-mono focus:outline-none focus:border-blue-500"
                                   />
                                 </div>
                                 <div className="w-28">
@@ -1117,7 +1078,7 @@ export default function ExamPage() {
                                     max={100}
                                     value={editMarks}
                                     onChange={(e) => setEditMarks(parseInt(e.target.value) || 1)}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs font-semibold text-center"
+                                    className="w-full px-3 py-2 border-2 border-slate-900 rounded-none text-xs font-semibold text-center"
                                   />
                                 </div>
                               </div>
@@ -1127,7 +1088,7 @@ export default function ExamPage() {
                                   type="button"
                                   onClick={cancelInlineEdit}
                                   disabled={inlineSaving}
-                                  className="px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg"
+                                  className="px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-slate-100 rounded-none"
                                 >
                                   Cancel
                                 </button>
@@ -1135,7 +1096,7 @@ export default function ExamPage() {
                                   type="button"
                                   onClick={() => saveInlineEdit(q.id)}
                                   disabled={inlineSaving}
-                                  className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold"
+                                  className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-none text-xs font-bold"
                                 >
                                   {inlineSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                                   <span>Save Changes</span>
@@ -1148,10 +1109,10 @@ export default function ExamPage() {
 
                           {/* Attached Diagram / Plot Section */}
                           {q.image_path && (
-                            <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 flex flex-col sm:flex-row items-center gap-4">
+                            <div className="p-3 bg-slate-50 rounded-none border-2 border-slate-900 flex flex-col sm:flex-row items-center gap-4">
                               <div
                                 onClick={() => setImageZoomPath(q.image_path!)}
-                                className="w-36 h-28 bg-white rounded-lg border border-gray-200 flex items-center justify-center overflow-hidden cursor-zoom-in group relative flex-shrink-0"
+                                className="w-36 h-28 bg-white rounded-none border-2 border-slate-900 flex items-center justify-center overflow-hidden cursor-zoom-in group relative flex-shrink-0"
                               >
                                 <img
                                   src={q.image_path.startsWith("http") || q.image_path.startsWith("/") ? q.image_path : `/${q.image_path}`}
@@ -1177,7 +1138,7 @@ export default function ExamPage() {
                                   <button
                                     type="button"
                                     onClick={() => setPlotStudioQuestion(q)}
-                                    className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
+                                    className="text-xs text-blue-600 hover:text-blue-800 font-semibold"
                                   >
                                     Edit in Plot Studio →
                                   </button>
@@ -1205,10 +1166,10 @@ export default function ExamPage() {
           {/* STEP 4: EXPORT & PUBLISH */}
           {activeStep === 4 && (
             <div className="space-y-6">
-              <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-2xs">
+              <div className="bg-white rounded-none border-2 border-slate-900 p-6 shadow-[4px_4px_0_0_#0f172a]">
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 uppercase">
+                    <span className="px-2.5 py-0.5 rounded-none text-[10px] font-bold bg-blue-100 text-blue-700 uppercase">
                       Publishing Studio
                     </span>
                     <h3 className="text-lg font-bold text-gray-900 mt-1">Export & Distribute Examination</h3>
@@ -1220,8 +1181,8 @@ export default function ExamPage() {
 
                 {/* Export Status Toast */}
                 {exportStatus && (
-                  <div className="mb-4 p-3.5 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-center gap-2">
-                    <Download className="w-4 h-4 text-indigo-600 animate-bounce" />
+                  <div className="mb-4 p-3.5 bg-blue-50 border border-slate-900 rounded-none text-xs text-blue-900 flex items-center gap-2">
+                    <Download className="w-4 h-4 text-blue-600 animate-bounce" />
                     <span className="font-semibold">{exportStatus}</span>
                   </div>
                 )}
@@ -1229,13 +1190,13 @@ export default function ExamPage() {
                 {/* Export Cards Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                   {/* PPTX Export Card (Featured) */}
-                  <div className="border-2 border-orange-200 bg-gradient-to-b from-orange-50/40 to-white rounded-2xl p-5 space-y-3.5 flex flex-col justify-between shadow-2xs hover:shadow-md transition-shadow">
+                  <div className="border-2 border-slate-900 bg-blue-50 rounded-none p-5 space-y-3.5 flex flex-col justify-between shadow-[4px_4px_0_0_#0f172a] hover:shadow-[5px_5px_0_0_#0f172a] transition-shadow">
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center shadow-2xs">
+                        <div className="w-10 h-10 rounded-none bg-blue-200 text-blue-900 flex items-center justify-center shadow-[4px_4px_0_0_#0f172a]">
                           <Presentation className="w-5 h-5" />
                         </div>
-                        <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-[10px] font-bold uppercase">
+                        <span className="px-2 py-0.5 bg-blue-200 text-blue-900 rounded text-[10px] font-bold uppercase">
                           16:9 Widescreen
                         </span>
                       </div>
@@ -1248,7 +1209,7 @@ export default function ExamPage() {
                       type="button"
                       onClick={() => handleExport("pptx")}
                       disabled={exportingFormat !== null || !currentExam}
-                      className="w-full py-2.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2"
+                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-none text-xs font-bold shadow-[3px_3px_0_0_#0f172a] transition-all flex items-center justify-center gap-2"
                     >
                       {exportingFormat === "pptx" ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                       <span>Download PowerPoint (.pptx)</span>
@@ -1256,9 +1217,9 @@ export default function ExamPage() {
                   </div>
 
                   {/* PDF Export Card */}
-                  <div className="border border-gray-200 bg-white rounded-2xl p-5 space-y-3.5 flex flex-col justify-between shadow-2xs hover:shadow-md transition-shadow">
+                  <div className="border-2 border-slate-900 bg-white rounded-none p-5 space-y-3.5 flex flex-col justify-between shadow-[4px_4px_0_0_#0f172a] hover:shadow-[5px_5px_0_0_#0f172a] transition-shadow">
                     <div className="space-y-2">
-                      <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shadow-2xs">
+                      <div className="w-10 h-10 rounded-none bg-red-50 text-red-600 flex items-center justify-center shadow-[4px_4px_0_0_#0f172a]">
                         <FileText className="w-5 h-5" />
                       </div>
                       <h4 className="text-base font-bold text-gray-900">Adobe PDF Document</h4>
@@ -1270,7 +1231,7 @@ export default function ExamPage() {
                       type="button"
                       onClick={() => handleExport("pdf")}
                       disabled={exportingFormat !== null || !currentExam}
-                      className="w-full py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2"
+                      className="w-full py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-none text-xs font-bold shadow-[3px_3px_0_0_#0f172a] transition-all flex items-center justify-center gap-2"
                     >
                       {exportingFormat === "pdf" ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                       <span>Download PDF</span>
@@ -1278,9 +1239,9 @@ export default function ExamPage() {
                   </div>
 
                   {/* Word DOCX Export Card */}
-                  <div className="border border-gray-200 bg-white rounded-2xl p-5 space-y-3.5 flex flex-col justify-between shadow-2xs hover:shadow-md transition-shadow">
+                  <div className="border-2 border-slate-900 bg-white rounded-none p-5 space-y-3.5 flex flex-col justify-between shadow-[4px_4px_0_0_#0f172a] hover:shadow-[5px_5px_0_0_#0f172a] transition-shadow">
                     <div className="space-y-2">
-                      <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-2xs">
+                      <div className="w-10 h-10 rounded-none bg-blue-100 text-blue-700 flex items-center justify-center shadow-[4px_4px_0_0_#0f172a]">
                         <Layers className="w-5 h-5" />
                       </div>
                       <h4 className="text-base font-bold text-gray-900">Microsoft Word (.docx)</h4>
@@ -1292,7 +1253,7 @@ export default function ExamPage() {
                       type="button"
                       onClick={() => handleExport("docx")}
                       disabled={exportingFormat !== null || !currentExam}
-                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2"
+                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-none text-xs font-bold shadow-[3px_3px_0_0_#0f172a] transition-all flex items-center justify-center gap-2"
                     >
                       {exportingFormat === "docx" ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                       <span>Download .DOCX</span>
@@ -1300,9 +1261,9 @@ export default function ExamPage() {
                   </div>
 
                   {/* LaTeX Source Export Card */}
-                  <div className="border border-gray-200 bg-white rounded-2xl p-5 space-y-3.5 flex flex-col justify-between shadow-2xs hover:shadow-md transition-shadow">
+                  <div className="border-2 border-slate-900 bg-white rounded-none p-5 space-y-3.5 flex flex-col justify-between shadow-[4px_4px_0_0_#0f172a] hover:shadow-[5px_5px_0_0_#0f172a] transition-shadow">
                     <div className="space-y-2">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-2xs">
+                      <div className="w-10 h-10 rounded-none bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-[4px_4px_0_0_#0f172a]">
                         <FileCode2 className="w-5 h-5" />
                       </div>
                       <h4 className="text-base font-bold text-gray-900">LaTeX Source (.tex)</h4>
@@ -1314,7 +1275,7 @@ export default function ExamPage() {
                       type="button"
                       onClick={() => handleExport("tex")}
                       disabled={exportingFormat !== null || !currentExam}
-                      className="w-full py-2.5 bg-gray-800 hover:bg-gray-900 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2"
+                      className="w-full py-2.5 bg-gray-800 hover:bg-gray-900 disabled:opacity-50 text-white rounded-none text-xs font-bold shadow-[3px_3px_0_0_#0f172a] transition-all flex items-center justify-center gap-2"
                     >
                       {exportingFormat === "tex" ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                       <span>Download .TEX</span>
@@ -1322,9 +1283,9 @@ export default function ExamPage() {
                   </div>
 
                   {/* Direct Browser Print Card */}
-                  <div className="border border-gray-200 bg-white rounded-2xl p-5 space-y-3.5 flex flex-col justify-between shadow-2xs hover:shadow-md transition-shadow">
+                  <div className="border-2 border-slate-900 bg-white rounded-none p-5 space-y-3.5 flex flex-col justify-between shadow-[4px_4px_0_0_#0f172a] hover:shadow-[5px_5px_0_0_#0f172a] transition-shadow">
                     <div className="space-y-2">
-                      <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shadow-2xs">
+                      <div className="w-10 h-10 rounded-none bg-blue-100 text-blue-700 flex items-center justify-center shadow-[4px_4px_0_0_#0f172a]">
                         <Printer className="w-5 h-5" />
                       </div>
                       <h4 className="text-base font-bold text-gray-900">Direct Browser Print</h4>
@@ -1336,7 +1297,7 @@ export default function ExamPage() {
                       type="button"
                       onClick={() => handleExport("print")}
                       disabled={!currentExam}
-                      className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2"
+                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-none text-xs font-bold shadow-[3px_3px_0_0_#0f172a] transition-all flex items-center justify-center gap-2"
                     >
                       <Printer className="w-3.5 h-3.5" />
                       <span>Print Exam Paper</span>
@@ -1344,11 +1305,11 @@ export default function ExamPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-6 border-t border-gray-100 mt-6">
+                <div className="flex items-center justify-between pt-6 border-t-2 border-slate-900 mt-6">
                   <button
                     type="button"
                     onClick={() => setActiveStep(3)}
-                    className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+                    className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-slate-100 rounded-none transition-colors"
                   >
                     ← Back to Question Studio
                   </button>
@@ -1363,15 +1324,15 @@ export default function ExamPage() {
       {/* TAB 2: EXAM ARCHIVE & HISTORY                                     */}
       {/* ───────────────────────────────────────────────────────────────── */}
       {activeTab === "history" && (
-        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-2xs">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="bg-white rounded-none border-2 border-slate-900 overflow-hidden shadow-[4px_4px_0_0_#0f172a]">
+          <div className="px-6 py-4 border-b-2 border-slate-900 flex items-center justify-between">
             <div>
               <h3 className="text-base font-bold text-gray-900">Exam Generation Archive</h3>
               <p className="text-xs text-gray-500">Previously generated exams stored in database</p>
             </div>
             <button
               onClick={fetchPastExams}
-              className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-colors"
+              className="p-2 text-gray-500 hover:text-gray-800 hover:bg-slate-100 rounded-none transition-colors"
               title="Refresh History"
             >
               <RefreshCw className={`w-4 h-4 ${historyLoading ? "animate-spin" : ""}`} />
@@ -1389,15 +1350,15 @@ export default function ExamPage() {
               {pastExams.map((exam) => (
                 <div
                   key={exam.id}
-                  className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-gray-50/80 transition-colors"
+                  className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-blue-50 transition-colors"
                 >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2.5">
                       <span className="font-bold text-sm text-gray-900">{exam.title}</span>
-                      <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-50 text-indigo-700">
+                      <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-700">
                         {exam.max_marks} Marks
                       </span>
-                      <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                      <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-gray-600">
                         {exam.n_questions} Questions
                       </span>
                     </div>
@@ -1409,7 +1370,7 @@ export default function ExamPage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleLoadExam(exam.id)}
-                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors"
+                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-none text-xs font-bold shadow-[4px_4px_0_0_#0f172a] transition-colors"
                     >
                       Open in Studio
                     </button>
@@ -1426,9 +1387,9 @@ export default function ExamPage() {
       {/* ───────────────────────────────────────────────────────────────── */}
       {activeTab === "pipeline" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-6 shadow-2xs">
+          <div className="bg-white rounded-none border-2 border-slate-900 p-6 space-y-6 shadow-[4px_4px_0_0_#0f172a]">
             <div>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700 uppercase">
+              <span className="px-2.5 py-0.5 rounded-none text-[10px] font-bold bg-blue-100 text-blue-700 uppercase">
                 Model Architecture
               </span>
               <h3 className="text-lg font-bold text-gray-900 mt-1">Autonomous Exam Generation Pipeline</h3>
@@ -1441,14 +1402,14 @@ export default function ExamPage() {
               {PIPELINE_STEPS.map(({ step, label, icon: Icon, desc }) => (
                 <div key={step} className="flex gap-4">
                   <div className="flex flex-col items-center">
-                    <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-shrink-0 font-bold text-xs shadow-2xs">
+                    <div className="w-8 h-8 rounded-none bg-blue-600 text-white flex items-center justify-center flex-shrink-0 font-bold text-xs shadow-[4px_4px_0_0_#0f172a]">
                       {step}
                     </div>
-                    {step < PIPELINE_STEPS.length && <div className="w-0.5 h-8 bg-indigo-100 mt-1" />}
+                    {step < PIPELINE_STEPS.length && <div className="w-0.5 h-8 bg-blue-100 mt-1" />}
                   </div>
                   <div className="pt-0.5 pb-2">
                     <div className="flex items-center gap-2 mb-1">
-                      <Icon className="w-4 h-4 text-indigo-500" />
+                      <Icon className="w-4 h-4 text-blue-500" />
                       <p className="text-sm font-bold text-gray-900">{label}</p>
                     </div>
                     <p className="text-xs text-gray-500 leading-relaxed">{desc}</p>
@@ -1459,28 +1420,28 @@ export default function ExamPage() {
           </div>
 
           <div className="space-y-4">
-            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-2 shadow-2xs">
+            <div className="bg-white rounded-none border-2 border-slate-900 p-5 space-y-2 shadow-[4px_4px_0_0_#0f172a]">
               <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                <Brain className="w-4 h-4 text-indigo-600" />
-                Dense Vector Context Retrieval
+                <Brain className="w-4 h-4 text-blue-600" />
+                Intelligent Curriculum Alignment
               </h4>
               <p className="text-xs text-gray-500 leading-relaxed">
-                ExaGo indexes all uploaded JSON syllabi, textbooks, and past examination papers into a high-dimensional FAISS embedding vector space. During question generation, relevant curriculum objectives and problem sets are semantically retrieved to guide the LLM.
+                ExaGo indexes your course syllabi, textbooks, and notes into structured learning topics. During examination generation, the system references exact topic objectives, boundary conditions, and theorems to draft questions tailored specifically to your coursework.
               </p>
             </div>
 
-            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-2 shadow-2xs">
+            <div className="bg-white rounded-none border-2 border-slate-900 p-5 space-y-2 shadow-[4px_4px_0_0_#0f172a]">
               <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
                 <ImageIcon className="w-4 h-4 text-blue-600" />
-                Single-Pass Matplotlib Visual Engine
+                Automated Diagram & Graph Generator
               </h4>
               <p className="text-xs text-gray-500 leading-relaxed">
-                Rather than generic image searches, the model outputs executable Python code specifications (`image_spec`) executed in an isolated local Matplotlib sandbox. 3D surfaces, 2D vector streams, and damping curves are rendered in milliseconds directly into the exam output.
+                Rather than generic web image searches, diagrams are custom-drawn specifically for each question. 3D surfaces, coordinate curves, circuit diagrams, and scientific waveforms are rendered cleanly directly onto the question paper.
               </p>
             </div>
 
-            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4">
-              <p className="text-xs text-indigo-800 leading-relaxed">
+            <div className="bg-blue-50 border border-slate-900 rounded-none p-4">
+              <p className="text-xs text-blue-800 leading-relaxed">
                 <strong>Publication Ready:</strong> Generated exams are immediately exportable to 16:9 PowerPoint (.pptx), print-ready PDF via ReportLab, Microsoft Word (.docx), and LaTeX (.tex) for academic archiving.
               </p>
             </div>
@@ -1523,17 +1484,17 @@ export default function ExamPage() {
           onClick={() => setImageZoomPath(null)}
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/80 backdrop-blur-sm cursor-zoom-out"
         >
-          <div className="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl p-2 shadow-2xl overflow-hidden">
+          <div className="relative max-w-4xl max-h-[90vh] bg-white rounded-none p-2 shadow-2xl overflow-hidden">
             <button
               onClick={() => setImageZoomPath(null)}
-              className="absolute top-4 right-4 p-2 bg-gray-900/60 text-white rounded-full hover:bg-gray-900 transition-colors z-10"
+              className="absolute top-4 right-4 p-2 bg-gray-900/60 text-white rounded-none hover:bg-gray-900 transition-colors z-10"
             >
               <X className="w-5 h-5" />
             </button>
             <img
               src={imageZoomPath.startsWith("http") || imageZoomPath.startsWith("/") ? imageZoomPath : `/${imageZoomPath}`}
               alt="Diagram Preview"
-              className="max-h-[85vh] max-w-full object-contain rounded-xl"
+              className="max-h-[85vh] max-w-full object-contain rounded-none"
             />
           </div>
         </div>
@@ -1552,7 +1513,7 @@ export default function ExamPage() {
 
         <div className="space-y-6">
           {questions.map((q, idx) => (
-            <div key={q.id} className="space-y-3 pb-4 border-b border-gray-300">
+            <div key={q.id} className="space-y-3 pb-4 border-b border-slate-900">
               <div className="flex justify-between items-start font-bold">
                 <span className="text-base">Q{idx + 1}.</span>
                 <span className="text-sm">[{q.marks} Marks]</span>

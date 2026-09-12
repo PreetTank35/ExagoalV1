@@ -26,6 +26,14 @@ backend/__pycache__/
 .env*.local
 *.env
 
+# Local runtime data and generated publication artifacts
+backend/examgen.db
+backend/package-lock.json
+backend/static/exports/*
+!backend/static/exports/.gitkeep
+backend/static/images/*
+!backend/static/images/.gitkeep
+
 # IDE and OS files
 .DS_Store
 Thumbs.db

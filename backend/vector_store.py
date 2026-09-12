@@ -13,10 +13,20 @@ from collections import Counter
 
 class VectorStore:
     def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
-        self.encoder = SentenceTransformer(model_name)
-        self.dimension = self.encoder.get_sentence_embedding_dimension()
+        self.model_name = model_name
+        self._encoder: Optional[SentenceTransformer] = None
+        # all-MiniLM-L6-v2 has a stable 384-dimensional output. Keeping the
+        # index setup independent from model loading lets the API start fast.
+        self.dimension = 384
         self.index = faiss.IndexFlatL2(self.dimension)
         self.items: List[Dict[str, Any]] = []
+
+    @property
+    def encoder(self) -> SentenceTransformer:
+        if self._encoder is None:
+            self._encoder = SentenceTransformer(self.model_name)
+            self.dimension = self._encoder.get_sentence_embedding_dimension()
+        return self._encoder
 
     # ── Write ──────────────────────────────────────────────────────────────
     def add(self, list_of_items: List[Union[Dict[str, Any], str]]):
