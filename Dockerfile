@@ -16,6 +16,9 @@ COPY backend/ .
 
 # Port binding
 ENV PORT=8000
+ENV CUDA_VISIBLE_DEVICES=-1
+ENV OMP_NUM_THREADS=1
+ENV TOKENIZERS_PARALLELISM=false
 EXPOSE 8000
 
 CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}"]
