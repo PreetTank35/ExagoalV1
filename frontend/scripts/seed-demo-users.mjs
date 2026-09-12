@@ -12,7 +12,7 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 });
 
 const users = [
-  { email: "institute.admin@exagoal.demo", password: "ExaGo-Institute-2026!", portal: "institute", name: "Dr. Suresh Sharma" },
+  { email: "institute.admin@exagoal.demo", password: "ExaGo-Institute-2026!", portal: "both", name: "Dr. Suresh Sharma" },
   { email: "student01@exagoal.demo", password: "ExaGo-Student01-2026!", portal: "student", name: "Aarav Kulkarni" },
   { email: "student02@exagoal.demo", password: "ExaGo-Student02-2026!", portal: "student", name: "Ananya Deshmukh" },
   { email: "student03@exagoal.demo", password: "ExaGo-Student03-2026!", portal: "student", name: "Rohan Patil" },

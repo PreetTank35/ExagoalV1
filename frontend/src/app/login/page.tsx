@@ -201,14 +201,6 @@ export default function LoginPage() {
       return;
     }
 
-    const accountPortal = data.user.user_metadata?.portal;
-    if (accountPortal && accountPortal !== portal) {
-      await supabase.auth.signOut();
-      setAuthError(`This account belongs to the ${accountPortal} portal. Please select the correct portal.`);
-      setLoading(false);
-      return;
-    }
-
     router.push(portal === "student" ? "/student/dashboard" : "/institute/dashboard");
     router.refresh();
   };

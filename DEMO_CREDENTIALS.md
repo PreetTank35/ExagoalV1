@@ -6,8 +6,8 @@ All accounts use the same Supabase project and are created with `email_confirm: 
 
 ## Institute
 
-**Portal:** Institute  
-**Role:** Institute administrator  
+**Portal:** Student or Institute  
+**Role:** Shared demo administrator account  
 **Email:** `institute.admin@exagoal.demo`  
 **Password:** `ExaGo-Institute-2026!`
 
@@ -78,8 +78,8 @@ The script is idempotent: existing demo users are updated, missing users are cre
 
 ## Login behavior
 
-- Student accounts must use the **Student** portal.
-- The institute account must use the **Institute** portal.
+- The shared institute demo account can use either the **Student** or **Institute** portal.
+- Student demo accounts use the **Student** portal.
 - Dashboard routes require an active Supabase session.
 - Portal mismatch is rejected at login and redirected by middleware.
 - Sign out clears the Supabase session and returns to `/login`.

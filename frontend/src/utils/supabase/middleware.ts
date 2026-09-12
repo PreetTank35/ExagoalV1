@@ -34,7 +34,6 @@ export const updateSession = async (request: NextRequest) => {
   const isStudentArea = pathname.startsWith("/student/dashboard");
   const isInstituteArea = pathname.startsWith("/institute/dashboard");
   const isOnLogin = pathname === "/login";
-  const portal = user?.user_metadata?.portal;
 
   if ((isStudentArea || isInstituteArea) && !user) {
     const loginUrl = request.nextUrl.clone();
@@ -43,18 +42,8 @@ export const updateSession = async (request: NextRequest) => {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (user && isStudentArea && portal === "institute") {
-    return NextResponse.redirect(new URL("/institute/dashboard", request.url));
-  }
-
-  if (user && isInstituteArea && portal === "student") {
-    return NextResponse.redirect(new URL("/student/dashboard", request.url));
-  }
-
   if (user && isOnLogin) {
-    return NextResponse.redirect(
-      new URL(portal === "institute" ? "/institute/dashboard" : "/student/dashboard", request.url)
-    );
+    return NextResponse.redirect(new URL("/student/dashboard", request.url));
   }
 
   return supabaseResponse;
