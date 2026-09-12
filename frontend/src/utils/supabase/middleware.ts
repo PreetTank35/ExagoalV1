@@ -29,7 +29,33 @@ export const updateSession = async (request: NextRequest) => {
   // IMPORTANT: this call must not be removed. It refreshes the auth token
   // and writes the refreshed cookie onto supabaseResponse above — without
   // it, sessions silently expire even though the cookie is still present.
-  await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
+  const pathname = request.nextUrl.pathname;
+  const isStudentArea = pathname.startsWith("/student/dashboard");
+  const isInstituteArea = pathname.startsWith("/institute/dashboard");
+  const isOnLogin = pathname === "/login";
+  const portal = user?.user_metadata?.portal;
+
+  if ((isStudentArea || isInstituteArea) && !user) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.searchParams.set("next", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  if (user && isStudentArea && portal === "institute") {
+    return NextResponse.redirect(new URL("/institute/dashboard", request.url));
+  }
+
+  if (user && isInstituteArea && portal === "student") {
+    return NextResponse.redirect(new URL("/student/dashboard", request.url));
+  }
+
+  if (user && isOnLogin) {
+    return NextResponse.redirect(
+      new URL(portal === "institute" ? "/institute/dashboard" : "/student/dashboard", request.url)
+    );
+  }
 
   return supabaseResponse;
 };

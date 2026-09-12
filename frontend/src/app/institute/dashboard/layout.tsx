@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { createClient } from "@/utils/supabase/client";
 import Link from "next/link";
 import {
   LayoutDashboard,
@@ -210,7 +211,7 @@ export default function InstituteDashboardLayout({
           <button
             onClick={() => {
               setSidebarOpen(false);
-              router.push("/login");
+              void createClient().auth.signOut().finally(() => router.push("/login"));
             }}
             title={sidebarCollapsed ? "Logout" : undefined}
             className={`flex items-center ${

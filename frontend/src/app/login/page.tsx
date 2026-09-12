@@ -190,13 +190,21 @@ export default function LoginPage() {
     setLoading(true);
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: exaId.trim(),
       password,
     });
 
     if (error) {
       setAuthError(error.message);
+      setLoading(false);
+      return;
+    }
+
+    const accountPortal = data.user.user_metadata?.portal;
+    if (accountPortal && accountPortal !== portal) {
+      await supabase.auth.signOut();
+      setAuthError(`This account belongs to the ${accountPortal} portal. Please select the correct portal.`);
       setLoading(false);
       return;
     }

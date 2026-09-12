@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { createClient } from "@/utils/supabase/client";
 import Link from "next/link";
 import {
   LayoutDashboard,
@@ -227,7 +228,7 @@ export default function StudentDashboardLayout({
           <button
             onClick={() => {
               setSidebarOpen(false);
-              router.push("/login");
+              void createClient().auth.signOut().finally(() => router.push("/login"));
             }}
             title={sidebarCollapsed ? "Logout" : undefined}
             className={`flex items-center gap-3 px-3 py-2.5 border-2 border-transparent text-sm font-bold text-[#4B5A73] hover:bg-red-50 hover:border-red-600 hover:text-red-600 w-full transition-colors ${
