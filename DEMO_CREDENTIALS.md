@@ -6,24 +6,62 @@ All accounts use the same Supabase project and are created with `email_confirm: 
 
 ## Institute
 
-| Portal | Email | Password | Role |
-|---|---|---|---|
-| Institute | `institute.admin@exagoal.demo` | `ExaGo-Institute-2026!` | Institute administrator |
+**Portal:** Institute  
+**Role:** Institute administrator  
+**Email:** `institute.admin@exagoal.demo`  
+**Password:** `ExaGo-Institute-2026!`
 
 ## Students
 
-| # | Email | Password |
-|---:|---|---|
-| 1 | `student01@exagoal.demo` | `ExaGo-Student01-2026!` |
-| 2 | `student02@exagoal.demo` | `ExaGo-Student02-2026!` |
-| 3 | `student03@exagoal.demo` | `ExaGo-Student03-2026!` |
-| 4 | `student04@exagoal.demo` | `ExaGo-Student04-2026!` |
-| 5 | `student05@exagoal.demo` | `ExaGo-Student05-2026!` |
-| 6 | `student06@exagoal.demo` | `ExaGo-Student06-2026!` |
-| 7 | `student07@exagoal.demo` | `ExaGo-Student07-2026!` |
-| 8 | `student08@exagoal.demo` | `ExaGo-Student08-2026!` |
-| 9 | `student09@exagoal.demo` | `ExaGo-Student09-2026!` |
-| 10 | `student10@exagoal.demo` | `ExaGo-Student10-2026!` |
+### Student 01
+
+**Email:** `student01@exagoal.demo`  
+**Password:** `ExaGo-Student01-2026!`
+
+### Student 02
+
+**Email:** `student02@exagoal.demo`  
+**Password:** `ExaGo-Student02-2026!`
+
+### Student 03
+
+**Email:** `student03@exagoal.demo`  
+**Password:** `ExaGo-Student03-2026!`
+
+### Student 04
+
+**Email:** `student04@exagoal.demo`  
+**Password:** `ExaGo-Student04-2026!`
+
+### Student 05
+
+**Email:** `student05@exagoal.demo`  
+**Password:** `ExaGo-Student05-2026!`
+
+### Student 06
+
+**Email:** `student06@exagoal.demo`  
+**Password:** `ExaGo-Student06-2026!`
+
+### Student 07
+
+**Email:** `student07@exagoal.demo`  
+**Password:** `ExaGo-Student07-2026!`
+
+### Student 08
+
+**Email:** `student08@exagoal.demo`  
+**Password:** `ExaGo-Student08-2026!`
+
+### Student 09
+
+**Email:** `student09@exagoal.demo`  
+**Password:** `ExaGo-Student09-2026!`
+
+### Student 10
+
+**Email:** `student10@exagoal.demo`  
+**Password:** `ExaGo-Student10-2026!`
 
 ## Create or refresh accounts
 
