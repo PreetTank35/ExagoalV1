@@ -100,7 +100,7 @@ export default function StudentDashboardLayout({
                 sidebarCollapsed ? "lg:hidden" : ""
               }`}
             >
-              ExaGo
+              ExaGoal
             </span>
           </div>
 

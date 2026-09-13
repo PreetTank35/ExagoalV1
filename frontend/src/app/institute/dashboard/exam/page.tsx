@@ -1426,7 +1426,7 @@ export default function ExamPage() {
                 Intelligent Curriculum Alignment
               </h4>
               <p className="text-xs text-gray-500 leading-relaxed">
-                ExaGo indexes your course syllabi, textbooks, and notes into structured learning topics. During examination generation, the system references exact topic objectives, boundary conditions, and theorems to draft questions tailored specifically to your coursework.
+                ExaGoal indexes your course syllabi, textbooks, and notes into structured learning topics. During examination generation, the system references exact topic objectives, boundary conditions, and theorems to draft questions tailored specifically to your coursework.
               </p>
             </div>
 

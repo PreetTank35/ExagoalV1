@@ -3,7 +3,7 @@
 /**
  * BrainVisualization.tsx
  * -----------------------------------------------------------------------
- * Interactive 3D brain activity model for ExaGo's "Learning State" panel.
+ * Interactive 3D brain activity model for ExaGoal's "Learning State" panel.
  *
  * Pure Three.js (no react-three-fiber). Client component — mount inside a
  * Next.js app with `dynamic(() => import('./BrainVisualization'), { ssr:false })`

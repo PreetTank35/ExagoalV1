@@ -51,7 +51,7 @@ const INSTITUTE_DETAILS = [
     value: "Pune, Maharashtra",
   },
   {
-    label: "ExaGo Plan",
+    label: "ExaGoal Plan",
     value: "Pro — NEP Compliant",
   },
   {

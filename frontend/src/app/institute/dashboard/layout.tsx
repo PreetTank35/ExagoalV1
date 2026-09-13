@@ -108,7 +108,7 @@ export default function InstituteDashboardLayout({
             {!sidebarCollapsed && (
               <div>
                 <span className="text-[#172033] font-extrabold text-base tracking-tight">
-                  ExaGo
+                  ExaGoal
                 </span>
 
                 <div className="text-[10px] text-[#2563EB] font-extrabold uppercase tracking-[0.16em]">

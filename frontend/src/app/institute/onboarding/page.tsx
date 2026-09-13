@@ -16,7 +16,7 @@ const STEPS = [
 const ERP_STEPS = [
   { step: 1, title: "Paste your ERP Base URL", desc: "The root URL of your institution's ERP system (e.g., https://erp.mitaoe.ac.in)" },
   { step: 2, title: "Generate API Token in ERP", desc: "In your ERP admin panel, navigate to API Settings → Create Token with read-only student access." },
-  { step: 3, title: "Paste Token & Fetch Permissions", desc: "Paste the token here. ExaGo will request only: student list, academic records, and extracurricular data." },
+  { step: 3, title: "Paste Token & Fetch Permissions", desc: "Paste the token here. ExaGoal will request only: student list, academic records, and extracurricular data." },
   { step: 4, title: "Confirm & Sync", desc: "Review which data will be synced. Click Confirm to start the initial import — usually takes 2–5 minutes." },
 ];
 
@@ -42,7 +42,7 @@ export default function InstituteOnboarding() {
           <div className="w-9 h-9 bg-[#2563EB] border-2 border-[#172033] shadow-[3px_3px_0_#172033] flex items-center justify-center">
             <BookOpen className="w-4 h-4 text-white" />
           </div>
-          <span className="text-[#172033] font-black text-lg">ExaGo</span>
+          <span className="text-[#172033] font-black text-lg">ExaGoal</span>
           <span className="ml-2 text-xs bg-[#DBEAFE] text-[#1D4ED8] border-2 border-[#172033] font-black px-2 py-0.5">
             Institute Setup
           </span>

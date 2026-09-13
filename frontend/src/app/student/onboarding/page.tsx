@@ -64,7 +64,7 @@ export default function StudentOnboarding() {
           <div className="w-9 h-9 bg-[#2563EB] border-2 border-[#172033] shadow-[3px_3px_0_#172033] flex items-center justify-center">
             <BookOpen className="w-4 h-4 text-white" />
           </div>
-          <span className="text-[#172033] font-black text-lg">ExaGo</span>
+          <span className="text-[#172033] font-black text-lg">ExaGoal</span>
           <span className="ml-2 text-xs bg-[#DBEAFE] text-[#1D4ED8] font-bold px-2 py-0.5 ">
             Student Setup
           </span>
